@@ -6,6 +6,8 @@ Static termination check: DAG means terminating program.
 
 Static memoization ensures no equivalent algorithms are enumerated.
 
+Simplicity control (to be improved): from simplest to most complex programs, thus from simplest to most complex outputs.
+
 --------
 
 Security applications:
