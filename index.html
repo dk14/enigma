@@ -221,7 +221,11 @@
 
     const prefixinit = (arr) => arr.slice(0, arr.length - 1)
 
-    const areCommutingVariables = (fourVars, matrix) => fourVars.length < 4 || doesCommute(fourVars[0], fourVars[3], matrix) && doesCommute(fourVars[1], fourVars[2], matrix)
+    const areCommutingVariables = (fourVars, matrix) => {
+        const res = fourVars.length < 4 || doesCommute(fourVars[0], fourVars[3], matrix) && doesCommute(fourVars[1], fourVars[2], matrix)
+        if (!res) {window.skips++; reportStates()}
+        return res
+    }
 
     const extractSubmatrix = (matrix, variable) => matrix.slice(0, variable + 1).map(row => row.slice(0, variable + 1))
 
@@ -239,7 +243,7 @@
 
     let throttle = 4n
 
-    const executeStepBound = 133
+    const executeStepBound = 13300
 
     const makeKey = (n, initState, matrix, op) => `${initState.map(x => x?.toString())}\n\n${matrix.join("\n")}\n\n${op.join("\n")}\n------\n\n`
 
@@ -249,15 +253,23 @@
 
     window.hitsRuntime = 0
 
+    window.skips = 0
+
+    const reportStates = () => {
+        if (render) states(`${window.hits} static hits, memoized: ${memoEqv.size} \n ${window.hitsRuntime} runtime hits, memoized: ${Object.keys(memo).length} \n skips = ${window.skips}`, "pink")
+
+    }
+
     const memoize = (n, initState, matrix, op, execute, static = false) => {
         if (memoPoolSize === -1) return [{value: undefined, state: initState}, false, false]
+        reportStates()
         
         const key = makeKey(n, initState, matrix, op)
-        if (render) states(`${window.hits} static hits, memoized: ${memoEqv.size} \n ${window.hitsRuntime} runtime hits, memoized: ${Object.keys(memo).length} \n `, "pink")
+        
         // cache = \n ${[...Object.entries(memo)].map(x => x[0] + " -> " + x[1].value + " in " + x[1].state).join("\n")}
 
         const checkEquivalence = (state) => {
-            if (static ) {
+            if (static) {
                 const eqvKey = makeEqvKey(n, state)
                 const isEqv = memoEqv.has(eqvKey)
                 memoEqv.add(eqvKey)
@@ -268,6 +280,7 @@
 
         if (memo[key]) {
             window.hitsRuntime++
+            console.log(memo[key].state)
             return [memo[key], false, checkEquivalence(memo[key].state)]
         } else {
             if (Object.keys(memo).length > memoPoolSize) delete memo[Object.keys(memo)[0]]
@@ -297,11 +310,16 @@
             window.render = false
             const cfg = {n: variable + 1, i: 0, stepBound: executeStepBound, initState: initSt, matrix: m, ops: o, until: (state) => state.slice(0, variable + 1).every(x => x !== undefined)}
             const result = window.execute(cfg)
+            console.log(initState)
+            console.log(memoEqv)
             window.render = isRender
             return result
         }
         const [result, isNotFound, isEqv] = memoize(matrix.length, initState, reducedMatrix, reducedOp, execute, true)
-        return isEqv && (window.random % throttle === 0n || throttle === 0n)
+        console.log(variable)
+        console.log(isEqv)
+
+        return isEqv
     }
 </script>
 <script>
@@ -369,7 +387,9 @@
                 
     const skipPredicate = (n, precision, predicateList) => {
         const skipStep = Math.max(1, Math.floor(n / precision))
-        return (vars => (skipStep === 1 || vars.every(v => v % skipStep === 0)) && (!predicateList || predicateList.every(p => p(vars))))
+        const toNotSkip = (vars => (skipStep === 1 || vars.every(v => v % skipStep === 0)) && (!predicateList || predicateList.every(p => p(vars))))
+        if (!toNotSkip) { window.skips++; reportStates() }
+        return toNotSkip
     }
 
     async function* yieldMatricies(vars, recursive, diff, codiff, variable, matrix, ops, precision, extraPredicates) {
@@ -393,14 +413,20 @@
         const predicate = opnum === 3 ? vars => areCommutingVariables(vars, matrix) && skipPredicate(variable, precision)(vars) : vars => skipPredicate(variable, precision)
         
 
+        const incomingGen = pickSubsets(take(vars, variable - 1), args, [], predicate, true, variable < 6)
         //todo: avoid defaulting to zero
-        for await (let incoming of pickSubsets(take(vars, variable - 1), args, [], predicate, true, variable < 3)) {  
+        for await (let incoming of incomingGen) {  
             matrix[variable].forEach((_, j) => {matrix[variable][j] = 0; ops[variable][j] = 0})
             incoming.forEach(j => { matrix[variable][variable -j - 1] = 1; ops[variable][variable - j - 1] = opnum })
+            
 
             if (!await isEquivalent(matrix, variable, ops)) {
+                console.log("((()))" + variable + " " + opnum)
                 yield* yieldMatricies(vars, recursive, diff, codiff, variable + 1, matrix, ops, precision, extraPredicates)
-            } 
+            } else {
+                //err("hello " + variable + "  " + window.index + " \n " + [...memoEqv].join("\n") + " \n\n " + matrix.join("\n"))
+                window.skips++; reportStates()
+            }
         }     
                                    
     }
@@ -413,7 +439,7 @@
         
         let radix = 100
         
-        let precision = 3 //0 to n
+        let precision = 1000000 //0 to n
 
         let n = 3
 
@@ -967,6 +993,5 @@
     //TODO simplicity control. Per optype: spread, precision (in range of spread). Two commutation scores (regular and recurse), two complexity scores
 
     // simplicity priority: n, recurseOpsN, recurseOpsNPrecision (range recurseOpsN), recurseCommutationScore, recurseComplexity, commutationScore, complexity, recurseSpread, recursePrecision (range recurseSpread), diffOpsN, diffOpsNPrecision (range diffOpsN), diffSpread, diffPrecision (range diffSpread), sumSpread, sumPrecision (range sumSpread)
-    // UI responsiveness: show skipped partial matricies (report skips separately)
 </script>
 </html>
