@@ -19,7 +19,10 @@ Security applications:
 Enigma will be a reference deterministic TRNG for https://doomsdayexplorer.online defense network.
 
 -------
+Test cases: 
+Enigma has DSL for test cases.
 
-`trng.html` contains typical TRNG replica, abstracting from physical parameters.
+Additionally, `trng.html` contains typical TRNG replica, abstracting from physical parameters. 
+Enigma is expected to find this replica fast, given proper simplicity control.
 
 P.S. No AI was used to write the apps.
