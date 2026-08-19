@@ -1,4 +1,4 @@
-This repo contains webapp demonstrating enumeration of all possible terminating programs (`index.html`).
+This repo contains Enigma webapp demonstrating enumeration of all possible terminating programs (`index.html`).
 
 Abstract machine has sum, diff and times (dynamically aka dependently bounded recursion) operations making it computationally complete.
 
@@ -20,6 +20,7 @@ Enigma will be a reference deterministic TRNG for https://doomsdayexplorer.onlin
 
 -------
 Test cases: 
+
 Enigma has DSL for test cases.
 
 Additionally, `trng.html` contains typical TRNG replica, abstracting from physical parameters. 
