@@ -1,0 +1,972 @@
+<html>
+<body></body>
+<script>
+    // ---------------------------------------------------------------------------------------------------
+    // IO
+    document.body.style.backgroundColor = "black"
+    document.documentElement.style.scrollbarColor = "pink rgba(0,0,0,0)"
+
+    window.render = true
+    
+    const p = () => {
+        const pre = document.createElement("pre")
+        pre.style.userSelect = "none"
+        pre.style.color = "green"
+        document.body.appendChild(pre)
+        return (text, color = "green") => {
+            pre.style.color = color
+            pre.textContent = text + "\n"
+        }
+    }
+
+    window.initAudio = () => {
+        window.audioCtx = new AudioContext()
+        const compressor = audioCtx.createDynamicsCompressor();
+        compressor.threshold.setValueAtTime(-0.5, audioCtx.currentTime);
+        compressor.knee.setValueAtTime(0, audioCtx.currentTime);
+        compressor.ratio.setValueAtTime(40, audioCtx.currentTime);
+        compressor.attack.setValueAtTime(0.0, audioCtx.currentTime);
+        compressor.release.setValueAtTime(0.0, audioCtx.currentTime);
+        
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = "highpass"
+        filter.frequency.setTargetAtTime(40, audioCtx.currentTime, 0);
+        const filter2 = audioCtx.createBiquadFilter();
+        filter2.type = "lowpass"
+        filter2.frequency.setTargetAtTime(10000, audioCtx.currentTime, 0);
+        
+        filter.connect(filter2)
+        filter2.connect(compressor)
+        compressor.connect(context.destination)
+             
+        window.playByteArray = (byteArray) => {
+            const buffer = new Uint8Array(new ArrayBuffer(byteArray.length));
+            for (i = 0; i < byteArray.length; i++) {
+                buffer[i] = byteArray[i];
+            }
+            context.decodeAudioData(arrayBuffer, function(buffer) {
+                const source = context.createBufferSource()
+                source.buffer = buffer
+                source.connect(filter)
+                source.start(0)
+            })
+        }
+    }
+
+    const graphics = (width, height) => {
+        const canvas = document.createElement("canvas")
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        ctx.fillStyle='black';
+        ctx.fillRect(0,0,canvas.width,canvas.height);
+        document.body.appendChild(canvas)
+
+        try {navigator.wakeLock.request();} catch {}
+
+
+        let cursor = 0
+        const tape = []
+
+        const toByteArray = (value) => {
+            const buffer = []
+            const input = value.toString(16)
+            for (i = input.length - 2; i > 0; i -= 2) {
+                buffer.push(parseInt(input.substr(i, 2), 16))
+            }
+            return buffer.reverse()
+        }
+
+        const render = () => {
+            const audioFrameSize = 0
+            const imageFrameSize = canvas.width * canvas.height * 4
+            const frameSize = imageFrameSize + audioFrameSize
+            const rawImage = new Uint8ClampedArray(tape.slice(cursor * frameSize, cursor * frameSize + imageFrameSize))
+            if (rawImage.length >= frameSize) {
+                ctx.putImageData(new ImageData(rawImage, canvas.width, canvas.height), 0, 0)
+            }
+            if (cursor * frameSize > tape.length) cursor = 0
+            requestAnimationFrame(render)
+        }
+
+        const progressCursor = () => {
+            cursor++ 
+        }
+        addEventListener("mousemove", (event) => progressCursor())
+
+        ondevicemotion = () => progressCursor()
+
+        render()
+
+        return (data) => {
+            toByteArray(data).forEach(x => tape.push(x))
+        }
+    }
+
+    const prompt = p()
+    const show = p()
+    const out = p()
+    const opsmat = p()
+    const states = p()
+    const predicate = p()
+
+    const g = graphics(200, 100)
+    
+    const err = (msg) => { out(msg, "red"); throw msg }
+</script>
+<script>
+    //Util
+
+    const indicies = (arr) => {return arr.map((x, k) => x > 0 ? k : null).filter(x => x !== null)}
+
+    async function* pickSubsets(set, n, acc = [], predicate, order = true, nonEmpty = true) {
+        //if (n === 4 && set.length > n) throw " hello " + set
+        if (set.length <= n) { 
+            if (set.length === n && (!predicate || predicate(set))) {
+                yield set
+            } else {
+                if (nonEmpty) yield [0]
+            }
+            return
+        }
+        if (predicate && !predicate(acc)) return
+        if (n === 0 || set.length == 0) { yield acc; return}
+
+        const start = !order || acc.length === 0 ? 0 : set.findIndex(x => x > acc[acc.length - 1])
+        if (start === -1) return
+
+        for (let i = start; i < set.length; i++) {
+            const rest = [...set.slice(0, i), ...set.slice(i+1)]
+            yield* pickSubsets(rest, n - 1, [...acc, set[i]], predicate, order, nonEmpty)
+        }
+    }
+
+    //console.log(" subsets:" + JSON.stringify([...pickSubsets([0,2,3], 0, [], () => true)]))
+    //throw ""
+
+    const setdiff = (set1, set2) => set1.filter(v => !set2.includes(v))
+    const take = (arr, n) => arr.slice(0, n)
+    const rest =  (arr, n) => arr.slice(n)
+
+    const initmat = (n) => Array(n).fill(0).map(_ => Array(n).fill(0))
+
+    const score = (y, matrix) => {
+        let state = indicies(matrix[y])
+        const seen = new Set(state)
+        let steps = matrix.length
+        let commutationScore = 0
+
+        while (--steps > 0) {
+            state = state.map(v => indicies(matrix[v]).filter(el => !seen.has(el))).flat()
+            state.forEach(el => seen.add(el))
+            if (state.length === 0) return [commutationScore, seen.length]
+        }
+    }
+
+    const isRecurse = (variable, ops) => ops.variable.some(v => v === 3)
+
+    const scoreRecurse = (y, matrix, ops) => {
+        let state = indicies(matrix[y])
+        const seen = new Set(state)
+        let steps = matrix.length
+        let commutationScore = 0
+
+        while (--steps > 0) {
+            if (state.some(v => isRecurse(v), doesCommute(v, y))) commutationScore++
+
+            commutationScore++
+            state = state.map(v => indicies(matrix[v]).filter(el => !seen.has(el))).flat()
+            state.forEach(el => seen.add(el))
+            if (state.length === 0) return [commutationScore, seen.filter(v => isRecurse(v)).length]
+        }
+    }
+
+    const listDeps = (y, matrix) => {
+        let state = indicies(matrix[y])
+        const seen = new Set(state)
+        let steps = matrix.length
+
+        while (--steps > 0) {
+            state = state.map(v => indicies(matrix[v]).filter(el => !seen.has(el))).flat()
+            state.forEach(el => seen.add(el))
+            if (state.length === 0) return seen
+        }
+    }
+
+    const reduceSubMatrix = (matrix, ops, state) => {
+        const deps = listDeps(matrix.length - 1, matrix)
+        deps.add(matrix.length - 1)
+        return [
+            matrix.filter((_, i) => deps.has(i)).map(row => row.filter((_, j) => deps.has(j))), 
+            ops.filter((_, i) => deps.has(i)).map(row => row.filter((_, j) => deps.has(j))),
+            state.filter((_, i) => deps.has(i))
+        ]
+    }
+
+    const doesCommute = (x, y, matrix) => {
+        let state = indicies(matrix[y])
+        const seen = new Set(state)
+        let steps = matrix.length
+
+        while (--steps > 0) {
+            state = state.map(v => indicies(matrix[v]).filter(el => !seen.has(el))).flat()
+            state.forEach(el => seen.add(el))
+            if (state.length === 0) return false
+            if (seen.has(x)) {
+                //matrix[0][0] = 5
+                return true
+            }
+        }
+    }
+
+    const prefixinit = (arr) => arr.slice(0, arr.length - 1)
+
+    const areCommutingVariables = (fourVars, matrix) => fourVars.length < 4 || doesCommute(fourVars[0], fourVars[3], matrix) && doesCommute(fourVars[1], fourVars[2], matrix)
+
+    const extractSubmatrix = (matrix, variable) => matrix.slice(0, variable + 1).map(row => row.slice(0, variable + 1))
+
+
+</script>
+<script>
+    //Memoization
+    const memo = {}
+
+    const memoEqv = new Set()
+
+    const memoPoolSize = 100000
+
+    const memoEqvPoolSize = 100000
+
+    let throttle = 4n
+
+    const executeStepBound = 133
+
+    const makeKey = (n, initState, matrix, op) => `${initState.map(x => x?.toString())}\n\n${matrix.join("\n")}\n\n${op.join("\n")}\n------\n\n`
+
+    const makeEqvKey = (n, state) => `${n}: ${state.map(x => x?.toString())}`
+
+    window.hits = 0
+
+    window.hitsRuntime = 0
+
+    const memoize = (n, initState, matrix, op, execute, static = false) => {
+        if (memoPoolSize === -1) return [{value: undefined, state: initState}, false, false]
+        
+        const key = makeKey(n, initState, matrix, op)
+        if (render) states(`${window.hits} static hits, memoized: ${memoEqv.size} \n ${window.hitsRuntime} runtime hits, memoized: ${Object.keys(memo).length} \n `, "pink")
+        // cache = \n ${[...Object.entries(memo)].map(x => x[0] + " -> " + x[1].value + " in " + x[1].state).join("\n")}
+
+        const checkEquivalence = (state) => {
+            if (static ) {
+                const eqvKey = makeEqvKey(n, state)
+                const isEqv = memoEqv.has(eqvKey)
+                memoEqv.add(eqvKey)
+                if (isEqv) window.hits++
+                return isEqv
+            } else return false
+        }
+
+        if (memo[key]) {
+            window.hitsRuntime++
+            return [memo[key], false, checkEquivalence(memo[key].state)]
+        } else {
+            if (Object.keys(memo).length > memoPoolSize) delete memo[Object.keys(memo)[0]]
+            
+            if (memoEqv.size > memoEqvPoolSize) memoEqv.forEach(x => memoEqv.delete(x))
+
+            const res = execute(initState, matrix, op)
+
+            if (res === undefined) return [{value: undefined, state: initState}, false, false]
+            
+            memo[key] = {value: res, state: initState}
+
+            return [memo[key], true, checkEquivalence(memo[key].state)]
+        }
+    }
+
+    window.random = 0n
+
+    const isEquivalent = async (matrix, variable, op) => {
+        window.random++
+        if (memoEqvPoolSize === 0 || variable === matrix.length - 1) return false
+        const initState = Array(variable + 1).fill(null).map((v, i) => i === 0 ? 0: undefined)
+        const reducedMatrix = extractSubmatrix(matrix, variable)
+        const reducedOp = extractSubmatrix(op, variable)
+        const execute = (initSt, m, o) => {
+            const isRender = window.render
+            window.render = false
+            const cfg = {n: variable + 1, i: 0, stepBound: executeStepBound, initState: initSt, matrix: m, ops: o, until: (state) => state.slice(0, variable + 1).every(x => x !== undefined)}
+            const result = window.execute(cfg)
+            window.render = isRender
+            return result
+        }
+        const [result, isNotFound, isEqv] = memoize(matrix.length, initState, reducedMatrix, reducedOp, execute, true)
+        return isEqv && (window.random % throttle === 0n || throttle === 0n)
+    }
+</script>
+<script>
+    //Hyper Configurations (Simplicity Control)
+
+    async function* yieldHyperCfg(radix) {
+
+        const previousRadix = radix - 1
+
+        async function* generateWithPrecision(start, bound) { //todo exclude repetitions
+            for (let nSpread = start; nSpread < bound; nSpread++) 
+                for (let nStep = 1; nStep < nSpread; nStep++) 
+                    for (let n = 1; n < nSpread; n+=nStep) 
+                        yield n
+        }
+
+        async function* yieldHyperCfgDiffOpsN(n, recurseOps, commutationRecurseScore, complexityRecurseScore, commutationRegularScore, complexityRegular) {
+            for await (let diffOpsN of generateWithPrecision(3, n - recurseOps))
+                for await (let spread of generateWithPrecision(3, n))
+                    for await (let precision of generateWithPrecision(1, spread))
+                        if (recurseOps > previousRadix || commutationRecurseScore > previousRadix || complexityRecurseScore > previousRadix || commutationRegularScore > previousRadix || complexityRegular > previousRadix || diffOpsN > previousRadix)
+                            yield {n, recurseOps, commutationRecurseScore, complexityRecurseScore, commutationRegularScore, complexityRegular, diffOpsN, spread, precision}
+        }
+
+        async function* yieldHyperCfgComplexityRegular(n, recurseOps, commutationRecurseScore, complexityRecurseScore, commutationRegularScore) {
+            for await (let complexityRegular of generateWithPrecision(3, n))  
+                yield* yieldHyperCfgDiffOpsN(n, recurseOps, commutationRecurseScore, complexityRecurseScore, commutationRegularScore, complexityRegular)
+
+        }
+
+        async function* yieldHyperCfgCommutationRegular(n, recurseOps, commutationRecurseScore, complexityRecurseScore) {
+            for await (let commutationRegularScore of generateWithPrecision(3, n))  
+                yield* yieldHyperCfgComplexityRegular(n, recurseOps, commutationRecurseScore, complexityRecurseScore, commutationRegularScore)
+
+        }
+
+        async function* yieldHyperCfgComplexityRecurse(n, recurseOps, commutationRecurseScore) {
+            for await (let complexityRecurseScore of generateWithPrecision(3, recurseOps))  
+                yield* yieldHyperCfgCommutationRegular(n, recurseOps, commutationRecurseScore, complexityRecurseScore)
+            
+        }
+
+        async function* yieldHyperCfgCommutationRecurse(n, recurseOps) {
+            for await (let commutationRecurseScore of generateWithPrecision(3, recurseOps))  
+                yield* yieldHyperCfgComplexityRecurse(n, recurseOps, commutationRecurseScore)
+
+        }
+
+        async function* yieldHyperCfgRecurse(n) {
+            for await (let recurseOps of generateWithPrecision(3, n)) 
+                yield* yieldHyperCfgCommutationRecurse(n, recurseOps)
+        }
+
+
+        for (let n of generateWithPrecision(3, radix)) 
+            yield* yieldHyperCfgRecurse(n)
+
+    }
+
+
+</script>
+
+<script>
+    //Matrix Generation
+                
+    const skipPredicate = (n, precision, predicateList) => {
+        const skipStep = Math.max(1, Math.floor(n / precision))
+        return (vars => (skipStep === 1 || vars.every(v => v % skipStep === 0)) && (!predicateList || predicateList.every(p => p(vars))))
+    }
+
+    async function* yieldMatricies(vars, recursive, diff, codiff, variable, matrix, ops, precision, extraPredicates) {
+        if (variable === vars.length) { 
+            window.index++
+            matrix[1][0] = 1
+
+            const lastDeps = listDeps(matrix.length - 1, matrix)
+            lastDeps.add(matrix.length - 1)
+
+            vars.filter(dep => !lastDeps.has(dep)).forEach(dep => matrix[matrix.length - 1][dep] = 1)
+            const prepared = matrix.map(row => row.map(x => x === 2 ? 1 : x))
+            yield {n: vars.length, i: index, matrix: structuredClone(matrix), ops: structuredClone(ops)}; 
+
+            return 
+        }
+
+        const opnum = recursive.includes(variable) ? 3 : (diff.includes(variable) ? 2 : (codiff.includes(variable) ? 1 : 0)) //todo: allow one arg sum for copy, mirror diffs
+        const args = opnum === 3 ? 4 : 2 
+
+        const predicate = opnum === 3 ? vars => areCommutingVariables(vars, matrix) && skipPredicate(variable, precision)(vars) : vars => skipPredicate(variable, precision)
+        
+
+        //todo: avoid defaulting to zero
+        for await (let incoming of pickSubsets(take(vars, variable - 1), args, [], predicate, true, variable < 3)) {  
+            matrix[variable].forEach((_, j) => {matrix[variable][j] = 0; ops[variable][j] = 0})
+            incoming.forEach(j => { matrix[variable][variable -j - 1] = 1; ops[variable][variable - j - 1] = opnum })
+
+            if (!await isEquivalent(matrix, variable, ops)) {
+                yield* yieldMatricies(vars, recursive, diff, codiff, variable + 1, matrix, ops, precision, extraPredicates)
+            } 
+        }     
+                                   
+    }
+
+    async function* enumerateMatricies (extraPredicates = undefined) {
+        window.index = 0
+
+        //todo radix, precision; if (n < radix - 1) || (precision < radix - 1) skip
+        
+        
+        let radix = 100
+        
+        let precision = 3 //0 to n
+
+        let n = 3
+
+        while (++n) {
+            const vars = Array(n).fill(0).map((_, i) => i)
+
+            const recurseRange = [(extraPredicates?.recurseRange?.lower(n) ?? 4), (extraPredicates?.recurseRange?.upper(n) ?? (n / 2))]
+            const diffRange = [(extraPredicates?.diffRange?.lower(n) ?? 0), (extraPredicates?.diffRange?.upper(n) ?? (n / 3))]
+            const codiffRange = [(extraPredicates?.codiffRange?.lower(n) ?? 0), (extraPredicates?.codiffRange?.upper(n) ?? (n / 3))]
+
+            const deriveRange = (a, b) => Math.max(1, Math.floor((b - a) / precision))
+
+            for (let recurseOpsN = recurseRange[0]; recurseOpsN <= recurseRange[1]; recurseOpsN += deriveRange(recurseRange[0], recurseRange[1])) {
+                for (let diffOpsN = diffRange[0]; diffOpsN <= diffRange[1]; diffOpsN += deriveRange(diffRange[0], diffRange[1])) {
+                    for (let codiffOpsN = codiffRange[0]; codiffOpsN <= codiffRange[1]; codiffOpsN += deriveRange(codiffRange[0], codiffRange[1])) {
+                        //todo add skips to pickers
+                        for await (let recursive of pickSubsets(rest(vars, 1), recurseOpsN, [], undefined, true, false)) {
+                            for await (let diff of pickSubsets(setdiff(vars, recursive), diffOpsN, [], undefined, true, false)) {
+                                for await (let codiff of pickSubsets(setdiff(setdiff(vars, recursive), diff), diffOpsN, [], undefined, true, false)) {
+                                    yield* yieldMatricies(vars, recursive, diff, codiff, 1, initmat(n), initmat(n), precision, extraPredicates)
+                                }
+                            }
+                        }   
+                    }  
+                }
+            }
+        }
+    }
+
+    const validateMatrix = (matrix) => {
+        const invalid = matrix.map((row, i) => !row.some(v => v === 1) && i > 0 || !row.every((v,  j) => v === 0 || j < i && matrix.some((other, l) => l === j)) ? i : null).filter(x => x !== null)
+        if (invalid.length > 0) err(`deps: ${invalid}`)
+        return true   
+    }
+
+</script>
+<script>
+
+    // ---------------------------------------------------------------------------------------------------
+    // DSL
+
+    const dsl = (mock = false) => {
+
+        let synteticVarCounter = 0
+
+        const vars = []
+        const matrix = []
+        const ops = []
+
+        const index = (variable) => vars.findIndex(x => x === variable)
+
+        const addVar = (variable) => {
+            if (index(variable) === -1) {
+                vars.push(variable)
+                matrix.forEach(row => row.push(0))
+                matrix.push(Array(vars.length).fill(0))
+                ops.forEach(row => row.push(0))
+                ops.push(Array(vars.length).fill(0))
+            }
+            return variable
+        }
+
+        const newVar = () => {
+            synteticVarCounter++
+            return addVar(synteticVarCounter.toString())
+        }
+
+        const sum = (a, b) => {
+            const c = newVar()
+            matrix[index(c)][index(a)] = 1
+            matrix[index(c)][index(b)] = 1
+            ops[index(c)][index(b)] = 0
+            return c
+        }
+           
+        const diff = (a, b) => {
+            const c = newVar()
+            matrix[index(c)][index(a)] = 1
+            matrix[index(c)][index(b)] = 1
+            ops[index(c)][index(b)] = index(a) > index(b) ? 1 : 2
+            return c
+        }
+
+        const zero = () => diff(one(), one())
+
+        const firstVar = newVar()
+        
+        const one = () => {
+            const v = newVar()
+            matrix[index(v)][index(firstVar)] = 1
+            return v
+        }
+
+        const times = (counterOriginal, startOriginal, handler) => {
+            const counter = sum(zero(), counterOriginal)
+            const start = sum(zero(), startOriginal) 
+
+            const [end, counterEnd] = handler(start, counter)
+            const order = [index(counter), index(start), index(end), index(counterEnd)]
+            const isSorted = arr => arr.every((v,i,a) => !i || a[i-1] <= v);
+            if (!isSorted(order)) throw `order: ${order}`
+            const result = newVar()
+
+            matrix[index(result)][index(counter)] = 1
+            matrix[index(result)][index(start)] = 1
+            matrix[index(result)][index(end)] = 1
+            matrix[index(result)][index(counterEnd)] = 1
+
+            ops[index(result)][index(counterEnd)] = 3
+
+            return result
+        }
+
+        const id = (variable) => sum(variable, zero())
+
+        const cfg = () => {
+            return {n: vars.length, i: undefined, matrix, ops}
+        }
+
+        return {matrix, zero, one, sum, diff, times, id, cfg}
+    }
+
+    const mul = (op = dsl(), mul1, mul2) => {
+        return op.times(mul1, op.zero(), (acc, counter) => {
+            return [op.sum(acc, mul2), op.diff(counter, op.one())]
+        })
+    }
+
+    const div = (op = dsl(), arg, divisor) => { //todo adjust for mod?
+        return op.times(arg, op.zero(), (acc, counter) => {
+            return [op.sum(acc, op.one()), op.diff(counter, divisor)]
+        })
+    }
+
+    const mod = (op = dsl(), arg, divisor) => {
+        return op.times(arg, op.zero(), (acc, counter) => {
+            return [op.id(counter), op.diff(counter, op.id(divisor))]
+        })
+    }
+
+    const factorial = (op = dsl(), arg) => {
+        return op.times(arg, op.one(), (acc, counter) => {
+            return [mul(op, acc, counter), op.diff(counter, op.one())]
+        })
+    }
+
+    const exp = (op = dsl(), arg) => {
+        return op.times(arg, op.one(), (acc, counter) => {
+            return [mul(op, acc, arg), op.diff(counter, op.one())]
+        })
+    }
+</script>
+<script>
+
+    // ---------------------------------------------------------------------------------------------------
+    // Machine
+
+    const debug = false
+
+    const debugTermination = false
+
+    const reduceProgramAndMemoize = (matrix, ops, state, variable) => {
+        const subMatrix = extractSubmatrix(matrix, variable)
+        const subOps = extractSubmatrix(ops, variable)
+        const subMem = take(state, variable + 1)
+
+         const execute = (initSt, m, o) => {
+            const isRender = window.render
+            window.render = false
+            const cfg = {n: m.length, i: 0, initState: initSt, matrix: m, ops: o, forMemoize: true, stepBound: executeStepBound}
+            const result = window.execute(cfg)
+            window.render = isRender
+            return result
+        }
+
+        const [reducedMatrix, reducedOps, reducedState] = reduceSubMatrix(subMatrix, subOps, subMem)
+
+        const [result, __, _] = memoize(matrix.length, reducedState, reducedMatrix, reducedOps, execute)
+
+        return result.value
+    }
+
+    const step = (cfg, mem, shadowMem, extraAlgebra = [], kops = 6) => {
+        const matrix = cfg.matrix
+
+        const n = matrix[0].length
+        const i = mem.findIndex((v, i) => v === undefined && indicies(matrix[i]).every(j => mem[j] !== undefined))
+
+
+        let memoized = undefined
+        if (i < n - 1 && !cfg.nesting) {
+            memoized = reduceProgramAndMemoize(matrix, cfg.ops, mem, i)
+            if (memoized !== undefined) {
+                mem[i] = memoized
+                return
+            }
+        }
+        
+        if (debug && debugTermination) console.log("" + (cfg.nesting ?? 0) + ":" + i)
+       
+        const substep = (counter, start, end, counterEnd) => { 
+            if (counter.index < 0 || start.index < 0 || end.index < 0 || counterEnd.index < 0) return end.value ?? 0n
+            if (counter.index === i || start.index === i || end.index === i) return end.value ?? 0n
+
+            const newCfg = structuredClone(cfg)
+            newCfg.nesting = (cfg.nesting ?? 0) + 1
+            const prefix = Array(newCfg.nesting ?? 0).fill("        ").join("")
+
+            if (!newCfg.override) newCfg.override = []
+            if (!cfg.override) cfg.override = []
+
+            if (counter.value === 0n) return 0n
+            if (counter.value === 1n) return end.value ?? 0n
+
+            const repeat = (result, counterNew) => {
+                shadowMem[0][start.index] = result
+                shadowMem[0][counter.index] = counterNew
+
+                cfg.override[start.index] = shadowMem[0][start.index]
+                cfg.override[counter.index] = shadowMem[0][counter.index]
+                newCfg.override[start.index] = shadowMem[0][start.index]
+                newCfg.override[counter.index] = shadowMem[0][counter.index]
+                                
+                cfg.override?.forEach((v, j) => { if (v !== undefined) { shadowMem[0][j] = v } })
+            }
+
+            const reset = (reason) => {
+                if (debug && debugTermination) console.log (prefix + "reset " + (newCfg.nesting ?? 0) + " " + reason)
+                shadowMem.forEach((_, i) => { shadowMem[i].length = 0 })
+                if (reason === "exit") return
+                shadowMem[0].forEach((_, j) => {shadowMem[0][j] = j === 0 ? 0n : undefined})
+                if (shadowMem[0].length === 0) mem.forEach((_, j) => { if (j === 0) { shadowMem[0].push(0n) } else shadowMem[0].push(undefined)})
+            }
+
+            if (shadowMem[0].length === 0) {
+                reset("init")
+                repeat(mem[end.index], mem[counterEnd.index]) 
+            } else {
+                if (debug && debugTermination) console.log (prefix + "unsuspend " + (newCfg.nesting ?? 0) + " " + shadowMem.join(" | "))
+            } 
+
+            step(newCfg, shadowMem[0], shadowMem.filter((_, j) => j !== 0))
+             
+            if (shadowMem[0][end.index] !== undefined && shadowMem[0][counterEnd.index] !== undefined) {
+                const result = shadowMem[0][end.index]
+                const counterResult = shadowMem[0][counterEnd.index]
+
+                if (debug) console.log(`${prefix} --- ${shadowMem[0][counterEnd.index]} (var #${counterEnd.index})\n\n`)
+                if (debug) console.log(`${prefix} === ${shadowMem[0][end.index]} (var #${end.index})\n\n`)
+                
+                if (counterResult < shadowMem[0][counter.index]) {
+                    shadowMem[0][counterEnd.index] = shadowMem[0][counterEnd.index]
+                } else {
+                   if (counterResult > 0n) shadowMem[0][counterEnd.index]--
+                }
+                
+                if (counterResult <= 0n || counterResult >= shadowMem[0][counter.index]) {
+                    const result = shadowMem[0][end.index]
+                    cfg.override = []
+                    reset("exit")
+                    return result
+                } 
+                
+                reset("iteration computed")
+                repeat(result, counterResult)
+            }
+
+            if (debug && debugTermination) console.log(prefix + "suspend " + newCfg.nesting + " in state " + shadowMem[0])
+            return undefined
+        }
+
+        const algebra = [
+            (a, b) => a.value + b.value,
+            (a, b) => b.value >= a.value ? b.value - a.value : 0n,
+            (a, b) => a.value >= b.value ? a.value - b.value : 0n,
+            substep,
+            ...extraAlgebra
+        ]
+
+        if (i === -1) { err(`non-termination,\n mem: ${mem.map(x => x.toString()).join(",")}, \n\n n = ${cfg.n}, \n\nmatrix = \n\n${cfg.matrix.join("\n")}`) }
+        
+        const deps = indicies(matrix[i])
+
+        if (deps.length === 0) err("wrong matrix")
+        if (deps[0] === 0) { mem[i] = 1n; return }
+
+        let stop = false
+
+        deps.forEach((dep, j) => {
+            if (stop) return
+            const getmem = (shift) => {
+                const index = deps[j-shift]
+                return { index, value: mem[index] ?? 0n }
+            }
+
+            const opnum = cfg.ops[i][dep]
+            const operation = algebra[opnum]
+            const acc = {index: i, value: mem[i] ?? getmem(1).value}
+
+            if (opnum === 3) {
+                if (j === 3) {
+                    mem[i] = operation(getmem(3), getmem(2), getmem(1), getmem(0))
+                } else {
+                    mem[i] = getmem(1).value + getmem(0).value
+                }
+            } else {
+                mem[i] = operation(acc, getmem(0)) 
+            }
+
+            if (mem[i] === undefined) stop = true
+        })
+
+        if (memoized && mem[i] && mem[i] !== memoized) err(`memoization fail! ${mem[i]} !== ${memoized}`)
+     }
+
+    window.execute = (cfg, extraAlgebra, kops = 6) => {
+        const matrix = cfg.matrix
+        const n = matrix[0].length
+        const mem = cfg.initState ?? matrix[0].map(x => undefined)
+        mem[0] = 0n
+        const shadowMem = [...matrix[0].map(x => [])]
+        //opsmat("")
+
+        if (cfg.matrix.length !== cfg.ops.length) err("ops does not match matrix")
+
+        const mapops = (op) => [...[" +#", " _#", " -#", " *#"], ...Array(kops).fill(" f#")][op % kops]
+
+        const until = cfg.until
+        cfg.until = undefined
+
+        window.steps = 0n
+        while(true) {
+            try {
+                
+                if (steps++ > 20000000n) err("non-termination? mem:" + mem + "\n" + shadowMem.join("\n"))
+                if (steps > cfg.stepBound) break
+                step(cfg, mem, shadowMem, extraAlgebra, kops)
+            } catch (e) {
+                if (!e.original) {
+                    if (render) opsmat(cfg.ops.map((row, i) => `${("000" + i).slice(-4)}: ${row.map((v, j) => v === 0 ? (matrix[i][j] === 0 ? "" : mapops(v) + j) : mapops(v) + j).map(x => x === " +#0" ? "  =1" : x).join("")} ${row.map((v,j) => matrix[i][j] === 0 ? "----" : "").join("")}-> ${mem[i]}`).join("\n"), "brown")
+                    if (render) show(cfg.matrix.join("\n"))
+                    if (render) out(`${e.message ?? e} \n\n\n-------- memory: ${mem} `, "red")
+                    e.original = true
+                }
+                // todo fix - error should not be thrown
+                throw e
+            }
+            if (cfg.until && cfg.until(mem)) break
+            if (mem[n - 1] !== undefined) break
+            
+        }
+
+        if (window.render) out(`result=${mem[n - 1]} \n\nsteps=${steps} \n\nmem = ${mem}`, "yellow")
+        
+        if (window.render) opsmat(cfg.ops.map((row, i) => `${("000" + i).slice(-4)}: ${row.map((v, j) => v === 0 ? (matrix[i][j] === 0 ? "" : mapops(v) + j) : mapops(v) + j).map(x => x === " +#0" ? "  =1" : x).join("")} ${row.map((v,j) => matrix[i][j] === 0 ? "----" : "").join("")}-> ${mem[i]}`).join("\n"), "brown")
+        return mem[n - 1]
+    }
+</script>
+
+<script>
+    // ---------------------------------------------------------------------------------------------------
+    // Enumerate
+
+    window.attempts = 0
+    window.paused = false
+    window.onclick = () => { paused = !paused; window.initAudio(); try {DeviceMotionEvent.requestPermission()} catch {}}
+
+    async function* enumerate () {
+
+        for await (cfg of enumerateMatricies()) {
+            attempts++
+
+            if (attempts % 2 === 0) await(new Promise(o => setTimeout(() => o(true), 100)))
+            if (paused) await(new Promise(o => setInterval(() => {if (!paused) o(true)}, 10)))
+
+            if (window.render) prompt(`program#${cfg.i} ${cfg.n} vars`, "red")
+            if (window.render) show(cfg.matrix.join("\n"))
+            
+            
+
+            try {
+                validateMatrix(cfg.matrix)
+                const result = execute(cfg)
+                yield [result, cfg]
+            } catch (e) {
+                throw e
+            }
+        }
+    }
+
+    const enumerateUntil = async (predicate) => {
+        for await ([result, cfg] of enumerate()){
+            if (predicate(result)) return [result, cfg]
+        }
+    }
+
+    // todo: test and fix. calculate progress = fraction of non-nulls + (shadowMem0Progress * fraction of non-nulls)
+    // put lowest progress per k steps into suspension queue
+    // time from time pick up highest progress from suspension queue
+    async function* enumeratePar (poolSize = 100, kops = 4, extraAlgebra, extraPredicates, transformOps) {
+
+        const jobs = []
+        const generator = enumerateMatricies()
+
+        while (true) {
+            if (attempts % 1 === 0) await(new Promise(o => setTimeout(() => o(true), 1)))
+            if (paused) await(new Promise(o => setInterval(() => {if (!paused) o(true)}, 10)))
+
+            while (jobs.length < poolSize) {
+                const cfg = (await generator.next()).value
+                try {
+                    validateMatrix(cfg.matrix)
+                    attempts++
+                    
+                    if (render) prompt(`program#${cfg.i} ${cfg.n} vars`, "red")
+                    if (window.render) show(cfg.matrix.join("\n"))
+
+                    const matrix = cfg.matrix
+                    const n = matrix[0].length
+                    const mem = matrix[0].map(x => undefined)
+                    mem[0] = 0n
+                    const shadowMem = matrix[0].map(x => [])
+
+                    jobs.push({cfg, mem, shadowMem})
+
+                } catch {}
+                
+            }
+
+            const done = []
+
+            //todo: suspend jobs based on progress metric (possible with saving memory to disk)
+            for (job of jobs) {
+                const n = job.mem.length
+                
+                step(job.cfg, job.mem, job.shadowMem)
+                if (job.mem[n - 1] !== undefined) {
+                    const mem = job.mem
+                    const cfg = job.cfg
+                    const ops = job.cfg.ops
+                    const matrix = job.cfg.matrix
+
+                    //console.log(matrix)
+                    const mapops = (op) => [...[" +#", " _#", " -#", " *#"], ...Array(kops).fill(" f#")][op]
+                    if (window.render) out(`result=${mem[n - 1]} \n\nsteps=${steps} \n\nmem = ${mem}`, "yellow")
+                    if (window.render) opsmat(cfg.ops.map((row, i) => `${("000" + i).slice(-4)}: ${row.map((v, j) => v === 0 ? (matrix[i][j] === 0 ? "" : mapops(v) + j) : mapops(v) + j).map(x => x === " +#0" ? "  =1" : x).join("")} ${row.map((v,j) => matrix[i][j] === 0 ? "----" : "").join("")}-> ${mem[i]}`).join("\n"), "brown")
+                    done.push(job)
+                    yield [job.mem[n - 1], cfg]
+                }
+            }
+
+            done.forEach(job => {
+                jobs.includes(job) && jobs.splice(jobs.indexOf(job), 1)
+            })
+        }
+    }
+
+    const enumerateParUntil = async (predicate, poolSize = 100) => {
+        for await ([result, cfg] of enumeratePar(poolSize)){
+            if (predicate(result)) return [result, cfg]
+        }
+    }
+
+</script>
+<script>
+
+    (async () => { 
+        const testAddSub = () => {
+            const d = dsl()
+            d.diff(d.sum(d.one(), d.sum(d.one(), d.one())), d.one())
+            console.assert(execute(d.cfg()) === 2n, "test1")
+            show(d.cfg().matrix.join("\n"))
+        }
+
+        const testMul = () => {
+            const d2 = dsl()
+            const four = d2.sum(d2.sum(d2.one(), d2.one()), d2.sum(d2.one(), d2.one()))
+            const three = d2.sum(d2.sum(d2.one(), d2.one()), d2.one())
+            const seven = d2.sum(three, four)
+            mul(d2, seven, three)
+            const result2 = execute(d2.cfg())
+            show(d2.cfg().matrix.join("\n"))
+            if (result2 !== 21n) err( `7 * 3 = ${result2} = 21`)
+        }
+
+        const testFactorial = () => {
+            const d = dsl()
+            const four = d.sum(d.sum(d.one(), d.one()), d.sum(d.one(), d.one()))
+            const three = d.sum(d.sum(d.one(), d.one()), d.one())
+            factorial(d, four)
+            const result = execute(d.cfg())
+            show(d.cfg().matrix.join("\n"))
+            if (result !== 24n) err( `4! = ${result} = 24`)
+        }
+
+        const testExp = () => {
+            const d = dsl()
+            const four = d.sum(d.sum(d.one(), d.one()), d.sum(d.one(), d.one()))
+            const two = d.sum(d.one(), d.one())
+            exp(d, four)
+            const result = execute(d.cfg())
+            show(d.cfg().matrix.join("\n"))
+            if (result !== 256n) err( `4^4 = ${result} = 256`)
+        }
+
+        const testDiv = () => {
+            const d = dsl()
+            const five = d.sum(d.sum(d.one(), d.sum(d.one(), d.one())), d.sum(d.one(), d.one()))
+            const two = d.sum(d.one(), d.one())
+            div(d, five, two)
+            const result = execute(d.cfg())
+            show(d.cfg().matrix.join("\n"))
+            if (result !== 2n) err( `5 / 2 = ${result} = 2`)
+        }
+
+        const testMod= () => {
+            const d = dsl()
+            const five = d.sum(d.sum(d.one(), d.sum(d.one(), d.one())), d.sum(d.one(), d.one()))
+            const two = d.sum(d.one(), d.one())
+            mod(d, five, two)
+            const result = execute(d.cfg())
+            show(d.cfg().matrix.join("\n"))
+            if (result !== 1n) err(`5 % 2 = ${result} = 1`)
+        }
+
+        testAddSub()
+        testMul()
+        testExp()
+        testFactorial()
+        testDiv()
+        testMod()
+
+        //return
+
+        const getRandom = () => {
+            const array = new Uint8Array(20);
+            crypto.getRandomValues(array);
+            return BigInt("0x" + array.toHex())
+        }
+        
+        const candidate = getRandom()
+        
+        await enumerateUntil(x => {
+            if (render) predicate(`====> ${x} === ${candidate} ?`, x === candidate ? "green" : "red")
+            //g(getRandom())
+            g(x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x)
+            return  x === candidate || x > 900
+        })
+    })()
+
+    //TODO simplicity control. Per optype: spread, precision (in range of spread). Two commutation scores (regular and recurse), two complexity scores
+
+    // simplicity priority: n, recurseOpsN, recurseOpsNPrecision (range recurseOpsN), recurseCommutationScore, recurseComplexity, commutationScore, complexity, recurseSpread, recursePrecision (range recurseSpread), diffOpsN, diffOpsNPrecision (range diffOpsN), diffSpread, diffPrecision (range diffSpread), sumSpread, sumPrecision (range sumSpread)
+    // UI responsiveness: show skipped partial matricies (report skips separately)
+</script>
+</html>
