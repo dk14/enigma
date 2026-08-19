@@ -1,6 +1,6 @@
 This repo contains webapp demonstrating enumeration of all possible terminating programs (`index.html`).
 
-Abstract machine has sum, diff and times (dynamically aka dependently bounded recursion) operation making it computationally complete.
+Abstract machine has sum, diff and times (dynamically aka dependently bounded recursion) operations making it computationally complete.
 
 Static termination check: DAG means terminating program.
 
