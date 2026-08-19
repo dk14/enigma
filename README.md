@@ -11,7 +11,7 @@ Simplicity control (to be improved): from simplest to most complex programs, thu
 --------
 
 Security applications:
-- this, in theory, is attack on one-time pad. Shannon's fundamental assumption of uniformity is rejected:
+- this, in theory, is attack on one-time pad. **Shannon's fundamental assumption of uniformity is rejected**:
    - output, that is easiest to compute with "no-input" program that is easiest to find, has higher probability of appearance
 - true random is defined as "hardest to compute from known numbers, up to security threshold"
   - for a given security threshold (e.g. minimum 100Kwh energy spent on computation) amount of resources needed to actually satisfy it is more than threshold itself and unpredictable: spending nominal amount does not guarantee the number will be unique. E.g. no planned economy can satisfy true randomness.
