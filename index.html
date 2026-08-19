@@ -280,7 +280,6 @@
 
         if (memo[key]) {
             window.hitsRuntime++
-            console.log(memo[key].state)
             return [memo[key], false, checkEquivalence(memo[key].state)]
         } else {
             if (Object.keys(memo).length > memoPoolSize) delete memo[Object.keys(memo)[0]]
@@ -310,14 +309,10 @@
             window.render = false
             const cfg = {n: variable + 1, i: 0, stepBound: executeStepBound, initState: initSt, matrix: m, ops: o, until: (state) => state.slice(0, variable + 1).every(x => x !== undefined)}
             const result = window.execute(cfg)
-            console.log(initState)
-            console.log(memoEqv)
             window.render = isRender
             return result
         }
         const [result, isNotFound, isEqv] = memoize(matrix.length, initState, reducedMatrix, reducedOp, execute, true)
-        console.log(variable)
-        console.log(isEqv)
 
         return isEqv
     }
@@ -421,10 +416,8 @@
             
 
             if (!await isEquivalent(matrix, variable, ops)) {
-                console.log("((()))" + variable + " " + opnum)
                 yield* yieldMatricies(vars, recursive, diff, codiff, variable + 1, matrix, ops, precision, extraPredicates)
             } else {
-                //err("hello " + variable + "  " + window.index + " \n " + [...memoEqv].join("\n") + " \n\n " + matrix.join("\n"))
                 window.skips++; reportStates()
             }
         }     
@@ -982,7 +975,7 @@
         
         const candidate = getRandom()
         
-        await enumerateUntil(x => {
+        await enumerateParUntil(x => {
             if (render) predicate(`====> ${x} === ${candidate} ?`, x === candidate ? "green" : "red")
             //g(getRandom())
             g(x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x)
