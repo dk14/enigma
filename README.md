@@ -1,4 +1,4 @@
-This repo contains webapp demonstrating enumeration of all possible terminating programs.
+This repo contains webapp demonstrating enumeration of all possible terminating programs (`index.html`).
 
 Abstract machine has sum, diff and times (dynamically aka dependently bounded recursion) operation making it computationally complete.
 
@@ -15,3 +15,11 @@ Security applications:
    - output, that is easiest to compute with "no-input" program that is easiest to find, has higher probability of appearance
 - true random is defined as "hardest to compute from known numbers, up to security threshold"
   - for a given security threshold (e.g. minimum 100Kwh energy spent on computation) amount of resources needed to actually satisfy it is more than threshold itself and unpredictable. E.g. no planned economy can satisfy true randomness.
+ 
+Enigma will be a reference deterministic TRNG for https://doomsdayexplorer.online defense network.
+
+-------
+
+`trng.html` contains typical TRNG replica, abstracting from physical parameters.
+
+P.S. No AI was used to write the apps.
