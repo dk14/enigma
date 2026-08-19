@@ -405,11 +405,11 @@
         const opnum = recursive.includes(variable) ? 3 : (diff.includes(variable) ? 2 : (codiff.includes(variable) ? 1 : 0)) //todo: allow one arg sum for copy, mirror diffs
         const args = opnum === 3 ? 4 : 2 
 
-        const predicate = opnum === 3 ? vars => areCommutingVariables(vars, matrix) && skipPredicate(variable, precision)(vars) : vars => skipPredicate(variable, precision)
+        const predicate = vars => opnum === 3 ? vars => areCommutingVariables(vars, matrix) && skipPredicate(variable, precision)(vars) : vars => skipPredicate(variable, precision)
         
 
         const incomingGen = pickSubsets(take(vars, variable - 1), args, [], predicate, true, variable < 6)
-        //todo: avoid defaulting to zero
+        //todo: avoid defaulting to zero, detect no progress
         for await (let incoming of incomingGen) {  
             matrix[variable].forEach((_, j) => {matrix[variable][j] = 0; ops[variable][j] = 0})
             incoming.forEach(j => { matrix[variable][variable -j - 1] = 1; ops[variable][variable - j - 1] = opnum })
@@ -426,15 +426,10 @@
 
     async function* enumerateMatricies (extraPredicates = undefined) {
         window.index = 0
+        
+        let precision = 1 //0 to n
 
-        //todo radix, precision; if (n < radix - 1) || (precision < radix - 1) skip
-        
-        
-        let radix = 100
-        
-        let precision = 1000000 //0 to n
-
-        let n = 3
+        let n = 13
 
         while (++n) {
             const vars = Array(n).fill(0).map((_, i) => i)
@@ -449,7 +444,7 @@
                 for (let diffOpsN = diffRange[0]; diffOpsN <= diffRange[1]; diffOpsN += deriveRange(diffRange[0], diffRange[1])) {
                     for (let codiffOpsN = codiffRange[0]; codiffOpsN <= codiffRange[1]; codiffOpsN += deriveRange(codiffRange[0], codiffRange[1])) {
                         //todo add skips to pickers
-                        for await (let recursive of pickSubsets(rest(vars, 1), recurseOpsN, [], undefined, true, false)) {
+                        for await (let recursive of pickSubsets(rest(vars, 6), recurseOpsN, [], undefined, true, false)) {
                             for await (let diff of pickSubsets(setdiff(vars, recursive), diffOpsN, [], undefined, true, false)) {
                                 for await (let codiff of pickSubsets(setdiff(setdiff(vars, recursive), diff), diffOpsN, [], undefined, true, false)) {
                                     yield* yieldMatricies(vars, recursive, diff, codiff, 1, initmat(n), initmat(n), precision, extraPredicates)
