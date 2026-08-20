@@ -464,17 +464,17 @@
             commutation: {
                 commutationRecurseScore: 100000, 
                 complexityRecurseScore: 100000, 
-                commutationRegularScore: 100000, 
-                complexityRegular: 20000000
+                commutationRegularScore: 3000, 
+                complexityRegular: 5000
             },
             spread: {
-                precision: 5,
-                spreadRegular: 500000,
-                spreadRecurse: 100000
+                precision: 50000,
+                spreadRegular: 3000,
+                spreadRecurse: 500
             }
         }
 
-        let n = 25
+        let n = 20
 
         while (++n) {
             const vars = Array(n).fill(0).map((_, i) => i)
@@ -878,7 +878,7 @@
         const generator = enumerateMatricies()
 
         while (true) {
-            if (attempts % 1 === 0) await(new Promise(o => setTimeout(() => o(true), 1)))
+            if (attempts % 10 === 0) await(new Promise(o => setTimeout(() => o(true), 1)))
             if (paused) await(new Promise(o => setInterval(() => {if (!paused) o(true)}, 10)))
 
             while (jobs.length < poolSize) {
@@ -1007,19 +1007,23 @@
 
         //return
 
+
+        const bytes = 1
         const getRandom = () => {
-            const array = new Uint8Array(20);
+            const array = new Uint8Array(bytes);
             crypto.getRandomValues(array);
             return BigInt("0x" + array.toHex())
         }
         
         const candidate = getRandom()
+
+        const max = 2n ** (8n * BigInt(bytes))
         
         await enumerateParUntil(x => {
-            if (render) predicate(`====> ${x} === ${candidate} ?`, x === candidate ? "green" : "red")
+            if (render) predicate(`====> ${x % max} === ${candidate} ?`, (x % max) === candidate ? "green" : "red")
             //g(getRandom())
-            g(x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x)
-            return  x === candidate //|| x > 900
+            g(x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x)
+            return  x % max === candidate //|| x > 900
         })
     })()
 
