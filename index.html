@@ -324,11 +324,17 @@
 
         const previousRadix = radix - 1
 
-        async function* generateWithPrecision(start, bound) { //todo exclude repetitions
-            for (let nSpread = start; nSpread < bound; nSpread++) 
-                for (let nStep = 1; nStep < nSpread; nStep++) 
-                    for (let n = 1; n < nSpread; n+=nStep) 
-                        yield n
+        async function* generateWithPrecision(start, bound) {
+            const seen = new Set()
+            let spreadmul = 2
+            for (let nSpread = 2; nSpread / 2 <= bound; nSpread *= spreadmul) {
+                spreadmul *= 2
+                for (let nStep = nSpread; nStep >= 1; nStep = Math.floor(nStep / 2))
+                    for (let n = start; n <= nSpread; n+=nStep) {
+                        if (!seen.has(n) && n <= bound) yield n + 2
+                        if (n <= bound) seen.add(n)
+                    }
+            }              
         }
 
         async function* yieldHyperCfgDiffOpsN(n, recurseOps, commutationRecurseScore, complexityRecurseScore, commutationRegularScore, complexityRegular) {
@@ -369,10 +375,21 @@
         }
 
 
-        for (let n of generateWithPrecision(3, radix)) 
+
+        for await (let n of generateWithPrecision(3, radix))
             yield* yieldHyperCfgRecurse(n)
 
+
+
     }
+
+    (async () => {
+        console.log("hyper")
+        for await (hcfg of yieldHyperCfg(10)) {
+            //console.log(hcfg)
+        }
+    })()
+    
 
 
 </script>
@@ -409,7 +426,6 @@
         
 
         const incomingGen = pickSubsets(take(vars, variable - 1), args, [], predicate, true, variable < 6)
-        //todo: avoid defaulting to zero, detect no progress
         for await (let incoming of incomingGen) {  
             matrix[variable].forEach((_, j) => {matrix[variable][j] = 0; ops[variable][j] = 0})
             incoming.forEach(j => { matrix[variable][variable -j - 1] = 1; ops[variable][variable - j - 1] = opnum })
@@ -429,7 +445,7 @@
         
         let precision = 1 //0 to n
 
-        let n = 13
+        let n = 25
 
         while (++n) {
             const vars = Array(n).fill(0).map((_, i) => i)
@@ -974,7 +990,7 @@
             if (render) predicate(`====> ${x} === ${candidate} ?`, x === candidate ? "green" : "red")
             //g(getRandom())
             g(x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x)
-            return  x === candidate || x > 900
+            return  x === candidate //|| x > 900
         })
     })()
 
