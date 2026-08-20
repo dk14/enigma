@@ -180,10 +180,11 @@
 
         const genTriangle = (k, margin = 0, phase = 0) => Array(k).fill([]).map((_, i) => [2 * i, 2 * (k - i) + margin, i + phase])
         
-
         const genSmoothTriangle = (k, phase = 0) => Array(k).fill([]).map((_, i) => genTriangle(i, 3 * k - 2 * i, 2 * i + phase)).flat()
+
+        const genSpectra = (pairs) => pairs.map(pair => Array(pair[2] ?? 1).fill([]).map((_) => genSmoothTriangle(pair[0], pair[1]))).flat(2)
         
-        testPlot(Array(1000).fill(0).map((_, t) => sum(genSmoothTriangle(200, 50), t)))
+        testPlot(Array(1000).fill(0).map((_, t) => sum(genSpectra([[400, 50, 1], [40, 50, 100]]), t)))
     
     </script>
     <script>
@@ -226,13 +227,13 @@
             }
 
             async * cfgsInitiation() { 
-                yield Array(1000).fill([2, 3, 5])
+                yield genSmoothTriangle(50)
             }
             async * cfgsGenerate() { 
-                yield Array(1000).fill([2, 3, 100]).map((x, i) => [x[0], x[1], x[2] + i % 3])
+                yield genSmoothTriangle(30)
             }
             async * cfgsSelection() { 
-                yield Array(1000).fill([2, 3, 50]).map((x, i) => [x[0], x[1], x[2] + i % 3])
+                yield genSmoothTriangle(30)
             }
             async * timeLimit() { 
                 yield 3000
