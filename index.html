@@ -257,7 +257,6 @@
 
     const reportStates = () => {
         if (render) states(`${window.hits} static hits, memoized: ${memoEqv.size} \n ${window.hitsRuntime} runtime hits, memoized: ${Object.keys(memo).length} \n skips = ${window.skips}`, "pink")
-
     }
 
     const memoize = (n, initState, matrix, op, execute, static = false) => {
@@ -334,15 +333,24 @@
                         if (!seen.has(n) && n <= bound) yield n + 2
                         if (n <= bound) seen.add(n)
                     }
-            }              
+            }
+            yield bound              
         }
 
-        async function* yieldHyperCfgDiffOpsN(n, recurseOps, commutationRecurseScore, complexityRecurseScore, commutationRegularScore, complexityRegular) {
-            for await (let diffOpsN of generateWithPrecision(3, n - recurseOps))
-                for await (let spread of generateWithPrecision(3, n))
-                    for await (let precision of generateWithPrecision(1, spread))
-                        if (recurseOps > previousRadix || commutationRecurseScore > previousRadix || complexityRecurseScore > previousRadix || commutationRegularScore > previousRadix || complexityRegular > previousRadix || diffOpsN > previousRadix)
-                            yield {n, recurseOps, commutationRecurseScore, complexityRecurseScore, commutationRegularScore, complexityRegular, diffOpsN, spread, precision}
+        async function* generateExp(start, bound) {
+            for (let k = start; k < bound; k *= 2) {
+                yield k
+            } 
+            yield bound             
+        }
+
+        async function* yieldHyperCfgDiffOpsN(n, recurseOpsN, commutationRecurseScore, complexityRecurseScore, commutationRegularScore, complexityRegular) {
+            for await (let diffOpsN of generateWithPrecision(3, n - recurseOpsN))
+                for await (let spreadRecurse of generateExp(3, n))
+                    for await (let spreadRegular of generateExp(3, n))
+                        for await (let precision of generateWithPrecision(1, Math.min(spreadRecurse, spreadRegular)))
+                            if (recurseOpsN > previousRadix || commutationRecurseScore > previousRadix || complexityRecurseScore > previousRadix || commutationRegularScore > previousRadix || complexityRegular > previousRadix || diffOpsN > previousRadix || spreadRecurse > previousRadix || spreadRegular > previousRadix)
+                                yield {n, recurseOpsN, commutation: {commutationRecurseScore, complexityRecurseScore, commutationRegularScore, complexityRegular}, diffOpsN, spread: {spreadRecurse, spreadRegular, precision}}
         }
 
         async function* yieldHyperCfgComplexityRegular(n, recurseOps, commutationRecurseScore, complexityRecurseScore, commutationRegularScore) {
@@ -379,15 +387,13 @@
         for await (let n of generateWithPrecision(3, radix))
             yield* yieldHyperCfgRecurse(n)
 
-
-
     }
 
     (async () => {
         console.log("hyper")
-        for await (hcfg of yieldHyperCfg(10)) {
+        //for await (hcfg of yieldHyperCfg(7)) {
             //console.log(hcfg)
-        }
+        //}
     })()
     
 
@@ -397,14 +403,18 @@
 <script>
     //Matrix Generation
                 
-    const skipPredicate = (n, precision, predicateList) => {
-        const skipStep = Math.max(1, Math.floor(n / precision))
-        const toNotSkip = (vars => (skipStep === 1 || vars.every(v => v % skipStep === 0)) && (!predicateList || predicateList.every(p => p(vars))))
-        if (!toNotSkip) { window.skips++; reportStates() }
-        return toNotSkip
+    const skipPredicate = (n, extraPredicates, opnum, commutation, spread) => {
+        const predicateList = extraPredicates?.predicateListFor(opnum)
+        const skipStep = Math.max(1, Math.floor(n / spread.precision))
+        const spreadLimit = opnum === 3 ? (spread?.spreadRecurse ?? n) : (spread?.spreadRegular ?? n) 
+        return (vars => {
+            const cond = (vars.every(v => (v % skipStep === 0 || skipStep === 1 ) && v < spreadLimit)) && (!predicateList || predicateList.every(p => p(vars)))
+            if (!cond) { window.skips++; reportStates() }
+            return cond
+        })
     }
 
-    async function* yieldMatricies(vars, recursive, diff, codiff, variable, matrix, ops, precision, extraPredicates) {
+    async function* yieldMatricies(vars, recursive, diff, codiff, variable, matrix, ops, extraPredicates, commutation, spread) {
         if (variable === vars.length) { 
             window.index++
             matrix[1][0] = 1
@@ -422,17 +432,19 @@
         const opnum = recursive.includes(variable) ? 3 : (diff.includes(variable) ? 2 : (codiff.includes(variable) ? 1 : 0)) //todo: allow one arg sum for copy, mirror diffs
         const args = opnum === 3 ? 4 : 2 
 
-        const predicate = vars => opnum === 3 ? vars => areCommutingVariables(vars, matrix) && skipPredicate(variable, precision)(vars) : vars => skipPredicate(variable, precision)
+        const predicate = opnum === 3 ? 
+            vars => areCommutingVariables(vars, matrix) && skipPredicate(variable, extraPredicates, opnum, commutation, spread)(vars) 
+            : vars => skipPredicate(variable, extraPredicates, opnum, commutation, spread)(vars)
         
-
         const incomingGen = pickSubsets(take(vars, variable - 1), args, [], predicate, true, variable < 6)
+       
         for await (let incoming of incomingGen) {  
             matrix[variable].forEach((_, j) => {matrix[variable][j] = 0; ops[variable][j] = 0})
             incoming.forEach(j => { matrix[variable][variable -j - 1] = 1; ops[variable][variable - j - 1] = opnum })
             
 
             if (!await isEquivalent(matrix, variable, ops)) {
-                yield* yieldMatricies(vars, recursive, diff, codiff, variable + 1, matrix, ops, precision, extraPredicates)
+                yield* yieldMatricies(vars, recursive, diff, codiff, variable + 1, matrix, ops, extraPredicates, commutation, spread)
             } else {
                 window.skips++; reportStates()
             }
@@ -443,7 +455,19 @@
     async function* enumerateMatricies (extraPredicates = undefined) {
         window.index = 0
         
-        let precision = 1 //0 to n
+        const hypercfg = {
+            commutation: {
+                commutationRecurseScore: 100000, 
+                complexityRecurseScore: 100000, 
+                commutationRegularScore: 100000, 
+                complexityRegular: 100000
+            },
+            spread: {
+                precision: 50000,
+                spreadRegular: 500000,
+                spreadRecurse: 100000
+            }
+        }
 
         let n = 25
 
@@ -463,7 +487,7 @@
                         for await (let recursive of pickSubsets(rest(vars, 6), recurseOpsN, [], undefined, true, false)) {
                             for await (let diff of pickSubsets(setdiff(vars, recursive), diffOpsN, [], undefined, true, false)) {
                                 for await (let codiff of pickSubsets(setdiff(setdiff(vars, recursive), diff), diffOpsN, [], undefined, true, false)) {
-                                    yield* yieldMatricies(vars, recursive, diff, codiff, 1, initmat(n), initmat(n), precision, extraPredicates)
+                                    yield* yieldMatricies(vars, recursive, diff, codiff, 1, initmat(n), initmat(n), extraPredicates, hypercfg.commutation, hypercfg.spread)
                                 }
                             }
                         }   
