@@ -38,29 +38,29 @@
             threshold1bitSelection;
             threshold1bitSampling;
 
-            xorCombine (acc, whitened) { throw "not implemented"}
+            async xorCombine (acc, whitened) { throw "not implemented"}
 
-            whiten (sample) { throw "not implemented"}
+            async whiten (sample) { throw "not implemented"}
 
-            filterToWindow = (sample, window) =>  { throw "not implemented"}
+            filterToWindow = async (sample, window) =>  { throw "not implemented"}
 
             report = (what, points) =>  { }
 
-            * cfgsInitiation() { throw "not implemented"}
-            * cfgsGenerate() { throw "not implemented"}
-            * cfgsSelection() { throw "not implemented"}
-            * timeLimit() { throw "not implemented"}
+            async * cfgsInitiation() { throw "not implemented"}
+            async * cfgsGenerate() { throw "not implemented"}
+            async * cfgsSelection() { throw "not implemented"}
+            async * timeLimit() { throw "not implemented"}
 
-            * enumerateEntropy () {
-                for (let limit of this.timeLimit()) {
-                    for (let selectionCfg of this.cfgsSelection()) {
+            async * enumerateEntropy () {
+                for await (let limit of this.timeLimit()) {
+                    for await (let selectionCfg of this.cfgsSelection()) {
                         
                     
                         const rawSelectionUnderlyingSignal = range(0, limit).map(t => sum(selectionCfg, t))
 
                         const rawSelectionSample = sample1bit(rawSelectionUnderlyingSignal, this.threshold1bitSelection)
                         
-                        const selectionSample = this.filterToWindow(rawSelectionSample, this.windowGenerateLength)
+                        const selectionSample = await this.filterToWindow(rawSelectionSample, this.windowGenerateLength)
 
                         this.report("selection", rawSelectionUnderlyingSignal)
                         const selections = indicies(selectionSample)
@@ -69,21 +69,21 @@
 
                         const [initiationWindow, ...generationWindows] = selections
 
-                        for (let initiationCfg of this.cfgsInitiation()) {
+                        for await (let initiationCfg of this.cfgsInitiation()) {
                             const initiationSignal = range(initiationWindow,  initiationWindow + this.windowInitiationLength).map(t => sum(initiationCfg, t))
                             const initiationSample = sample12bit(initiationSignal)
 
                             this.report("init-signal", initiationSignal)
                             
                                     
-                            let entropyAcc = this.whiten(initiationSample)
+                            let entropyAcc = await this.whiten(initiationSample)
 
-                            for (let generateCfg of this.cfgsGenerate()) {
+                            for await (let generateCfg of this.cfgsGenerate()) {
                                 for (let generateWindow of generationWindows) {
                                     const samplingSignal = range(generateWindow,  generateWindow + this.windowGenerateLength).map(t => sum(generateCfg, t))
                                     this.report("sample-signal", samplingSignal)
                                     const genSample = sample1bit(samplingSignal, this.threshold1bitSampling)
-                                    entropyAcc = this.xorCombine(entropyAcc, this.whiten(genSample))
+                                    entropyAcc = await this.xorCombine(entropyAcc, await this.whiten(genSample))
                                     yield entropyAcc
                                 }
                             }
@@ -174,9 +174,22 @@
       <script>
         class MockEntropyEnumerator extends AbstractEntropyEnumerator {
             
-            xorCombine (acc, whitened) { return acc.map((v, i) => (v + whitened[i]) % 2)}
+            async xorCombine (acc, whitened) { return acc.map((v, i) => (v + whitened[i]) % 2)}
 
-            whiten (sample) { return sample.slice(0, 256)}
+            async whiten (sample) {
+
+                if (crypto.subtle) {
+                    const sampleAsInt = BigInt("0b" + sample.map(x => x === 1 ? "1" : "0").join(""))
+                    const buffer = (new BigUint64Array([sampleAsInt])).buffer;
+                    const sha256 = await crypto.subtle.digest('SHA-256', buffer)     
+                    const view = new DataView(sha256, 0);
+                    const result = view.getBigUint64(0, true).toString(2).split("").map(x => x === "1" ? 1 : 0) ;
+                    return result
+                } else {
+                    return sample.slice(0, 256)
+
+                } 
+            }
 
             report = (what, points) => {
                 ({
@@ -186,7 +199,7 @@
                 })[what]()
             }
 
-            filterToWindow = (sample, windowLength) =>  { 
+            filterToWindow = async (sample, windowLength) =>  { 
                 const target = []
                 for (let i = 0; i < sample.length; i += windowLength) {
                     const chunk = sample.slice(i, i + windowLength)
@@ -198,16 +211,16 @@
                 return target.map(x => x ?? 0)
             }
 
-            * cfgsInitiation() { 
+            async * cfgsInitiation() { 
                 yield Array(1000).fill([2, 3, 5])
             }
-            * cfgsGenerate() { 
+            async * cfgsGenerate() { 
                 yield Array(1000).fill([2, 3, 100]).map((x, i) => [x[0], x[1], x[2] + i % 3])
             }
-            * cfgsSelection() { 
+            async * cfgsSelection() { 
                 yield Array(1000).fill([2, 3, 50])
             }
-            * timeLimit() { 
+            async * timeLimit() { 
                 yield 3000
             }
 
@@ -216,9 +229,21 @@
     </script>
 
     <script>
-        const generator = new MockEntropyEnumerator(19, 255)
+        (async () => {
+            const generator = new MockEntropyEnumerator(19, 255)
 
-        //console.log([...generator.enumerateEntropy()])
-        entropyPlot([...generator.enumerateEntropy()][0])
+            const toArray = async (generator) => {
+                const arr = []
+                for await (el of generator) {
+                    arr.push(el)
+                }
+                return arr
+            }
+            
+            const entropy = await toArray(generator.enumerateEntropy())
+            entropyPlot(entropy[0])
+
+        })()
+        
     </script>
 </html>
