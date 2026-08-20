@@ -171,7 +171,22 @@
         entropyLegend("Entropy")
 
     </script>
-      <script>
+    <script>
+
+        const testLegend = p()
+        testLegend("Sine construction: ")
+
+        testPlot = plot(500, 200)
+
+        const genTriangle = (k, margin = 0, phase = 0) => Array(k).fill([]).map((_, i) => [2 * i, 2 * (k - i) + margin, i + phase])
+        
+
+        const genSmoothTriangle = (k, phase = 0) => Array(k).fill([]).map((_, i) => genTriangle(i, 3 * k - 2 * i, 2 * i + phase)).flat()
+        
+        testPlot(Array(1000).fill(0).map((_, t) => sum(genSmoothTriangle(200, 50), t)))
+    
+    </script>
+    <script>
         class MockEntropyEnumerator extends AbstractEntropyEnumerator {
             
             async xorCombine (acc, whitened) { return acc.map((v, i) => (v + whitened[i]) % 2)}
@@ -187,7 +202,6 @@
                     return result
                 } else {
                     return sample.slice(0, 256)
-
                 } 
             }
 
@@ -218,7 +232,7 @@
                 yield Array(1000).fill([2, 3, 100]).map((x, i) => [x[0], x[1], x[2] + i % 3])
             }
             async * cfgsSelection() { 
-                yield Array(1000).fill([2, 3, 50])
+                yield Array(1000).fill([2, 3, 50]).map((x, i) => [x[0], x[1], x[2] + i % 3])
             }
             async * timeLimit() { 
                 yield 3000
