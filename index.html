@@ -153,32 +153,32 @@
     const score = (y, matrix) => {
         let state = indicies(matrix[y])
         const seen = new Set(state)
-        let steps = matrix.length
+        let steps = matrix.length * 4
         let commutationScore = 0
 
         while (--steps > 0) {
             state = state.map(v => indicies(matrix[v]).filter(el => !seen.has(el))).flat()
             state.forEach(el => seen.add(el))
-            if (state.length === 0) return [commutationScore, seen.length]
+            if (state.length === 0) return [commutationScore, seen.size]
         }
     }
 
-    const isRecurse = (variable, ops) => ops.variable.some(v => v === 3)
+    const isRecurse = (variable, ops) => ops[variable].some(v => v === 3)
 
     const scoreRecurse = (y, matrix, ops) => {
         let state = indicies(matrix[y])
         const seen = new Set(state)
-        let steps = matrix.length
+        let steps = matrix.length * 4
         let commutationScore = 0
 
         while (--steps > 0) {
-            if (state.some(v => isRecurse(v), doesCommute(v, y))) commutationScore++
+            if (state.some(v => isRecurse(v, ops) && doesCommute(v, y, matrix))) commutationScore++
 
             commutationScore++
             state = state.map(v => indicies(matrix[v]).filter(el => !seen.has(el))).flat()
             state.forEach(el => seen.add(el))
-            if (state.length === 0) return [commutationScore, seen.filter(v => isRecurse(v)).length]
-        }
+            if (state.length === 0) return [commutationScore, [...seen].filter(v => isRecurse(v, ops)).length]
+        } 
     }
 
     const listDeps = (y, matrix) => {
@@ -390,7 +390,6 @@
     }
 
     (async () => {
-        console.log("hyper")
         //for await (hcfg of yieldHyperCfg(7)) {
             //console.log(hcfg)
         //}
@@ -443,6 +442,10 @@
             incoming.forEach(j => { matrix[variable][variable -j - 1] = 1; ops[variable][variable - j - 1] = opnum })
             
 
+            const [commutationScore, commutationComplexity] = opnum === 3 ? scoreRecurse(variable, matrix, ops) : score(variable, matrix, ops)
+
+            const checkCommutation = commutation ? ((opnum === 3) ? commutationScore <= commutation.commutationRecurseScore && commutationComplexity <= commutation.complexityRecurseScore : commutationScore <= commutation.commutationRegularScore && commutationComplexity <= commutation.complexityRegular) : true
+
             if (!await isEquivalent(matrix, variable, ops)) {
                 yield* yieldMatricies(vars, recursive, diff, codiff, variable + 1, matrix, ops, extraPredicates, commutation, spread)
             } else {
@@ -460,10 +463,10 @@
                 commutationRecurseScore: 100000, 
                 complexityRecurseScore: 100000, 
                 commutationRegularScore: 100000, 
-                complexityRegular: 100000
+                complexityRegular: 20000000
             },
             spread: {
-                precision: 50000,
+                precision: 5,
                 spreadRegular: 500000,
                 spreadRecurse: 100000
             }
@@ -478,7 +481,7 @@
             const diffRange = [(extraPredicates?.diffRange?.lower(n) ?? 0), (extraPredicates?.diffRange?.upper(n) ?? (n / 3))]
             const codiffRange = [(extraPredicates?.codiffRange?.lower(n) ?? 0), (extraPredicates?.codiffRange?.upper(n) ?? (n / 3))]
 
-            const deriveRange = (a, b) => Math.max(1, Math.floor((b - a) / precision))
+            const deriveRange = (a, b) => Math.max(1, Math.floor((b - a) / hypercfg.spread.precision))
 
             for (let recurseOpsN = recurseRange[0]; recurseOpsN <= recurseRange[1]; recurseOpsN += deriveRange(recurseRange[0], recurseRange[1])) {
                 for (let diffOpsN = diffRange[0]; diffOpsN <= diffRange[1]; diffOpsN += deriveRange(diffRange[0], diffRange[1])) {
