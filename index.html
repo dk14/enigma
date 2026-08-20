@@ -146,7 +146,9 @@
 
     const setdiff = (set1, set2) => set1.filter(v => !set2.includes(v))
     const take = (arr, n) => arr.slice(0, n)
+
     const rest =  (arr, n) => arr.slice(n)
+    const cotake = (arr, n) => arr.slice(0, arr.length - n)
 
     const initmat = (n) => Array(n).fill(0).map(_ => Array(n).fill(0))
 
@@ -487,7 +489,7 @@
                 for (let diffOpsN = diffRange[0]; diffOpsN <= diffRange[1]; diffOpsN += deriveRange(diffRange[0], diffRange[1])) {
                     for (let codiffOpsN = codiffRange[0]; codiffOpsN <= codiffRange[1]; codiffOpsN += deriveRange(codiffRange[0], codiffRange[1])) {
                         //todo add skips to pickers
-                        for await (let recursive of pickSubsets(rest(vars, 6), recurseOpsN, [], undefined, true, false)) {
+                        for await (let recursive of pickSubsets(rest(cotake(vars, 6), 2).map(x => n - x), recurseOpsN, [], undefined, true, false)) {
                             for await (let diff of pickSubsets(setdiff(vars, recursive), diffOpsN, [], undefined, true, false)) {
                                 for await (let codiff of pickSubsets(setdiff(setdiff(vars, recursive), diff), diffOpsN, [], undefined, true, false)) {
                                     yield* yieldMatricies(vars, recursive, diff, codiff, 1, initmat(n), initmat(n), extraPredicates, hypercfg.commutation, hypercfg.spread)
