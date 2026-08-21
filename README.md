@@ -18,6 +18,8 @@ Security applications:
  
 Enigma will be a reference deterministic TRNG for https://doomsdayexplorer.online defense network.
 
+> Shannon's entropy only applicable in cases where the whole set of events under consideration is already fully computed, stored and readily accessible, as well as selection procedure, which is not the case in security. Shannon's entropy is loosely applicable to pseudo-random generation (lottery, coin-toss), which is not applicable in security: e.g. outcome of coin-toss is predictable from initial state and distance traveled: `(init + distance) mod 2`, slight periodic change of initial state and distance gives illusion of randomness.
+
 -------
 Test cases: 
 
