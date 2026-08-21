@@ -247,18 +247,65 @@
         (async () => {
             const generator = new MockEntropyEnumerator(19, 255)
 
-            const toArray = async (generator) => {
+            const toArray = async (generator, upTo = 1) => {
                 const arr = []
+                let i = 0
                 for await (el of generator) {
                     arr.push(el)
+                    if (++i > upTo) return arr
                 }
                 return arr
             }
             
-            const entropy = await toArray(generator.enumerateEntropy())
+            const entropy = await toArray(generator.enumerateEntropy(), 1)
             entropyPlot(entropy[0])
 
         })()
         
     </script>
+   <script type="module">
+
+    import * as btc from "./bitcoinjs-lib.js"
+    console.log(bitcoin.payments)
+
+
+    function deriveAddress(node, index, purpose) {
+        // BIP‑44 path: m / purpose' / coin_type' / account' / change / address_index
+        const path = `m/${purpose}'/${COIN_TYPE}'/${ACCOUNT}'/${CHANGE}/${index}`;
+        const child = node.derivePath(path);
+
+        const derive = purpose !== 44 ? bitcoin.payments.p2wpkh : bitcoin.payments.p2pkh
+        const d = derive({
+            pubkey: child.publicKey,
+            network: NETWORK,
+        });
+
+        if (purpose === 49) {
+            const { address } = bitcoin.payments.p2sh({
+                redeem: d,
+                network: bitcoin.networks.bitcoin,
+            });
+            return address
+        }
+        return d.address
+    }
+
+
+    function getAddressesFromSeed(seed) {
+        // Buffer (or any Uint8Array‑compatible object)
+        const root = bip32.fromSeed(seed, NETWORK);
+        const addresses = [];
+
+        for (let i = 0; i < NUM_ADDRESSES; i++) {
+            addresses.push(deriveAddress(root, i, 44));
+            addresses.push(deriveAddress(root, i, 49));
+            addresses.push(deriveAddress(root, i, 84));
+        }
+
+        return addresses
+    }
+
+   
+   </script>
+    
 </html>
