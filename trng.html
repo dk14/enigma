@@ -25,7 +25,7 @@
         }
 
         class AbstractEntropyEnumerator {
-            constructor (windowInitiationLength = 512, windowGenerateLength = 512, threshold1bitSelection = 1, threshold1bitSampling = 20) {
+            constructor (windowInitiationLength = 4096, windowGenerateLength = 512, threshold1bitSelection = 1, threshold1bitSampling = 20) {
                 if (new.target === AbstractEntropyEnumerator) throw "abstract"
                 this.windowInitiationLength = windowInitiationLength
                 this.windowGenerateLength = windowGenerateLength
@@ -76,7 +76,9 @@
                             this.report("init-signal", initiationSignal)
                             
                                     
-                            let entropyAcc = await this.whiten(initiationSample)
+                            let entropyAcc = await this.whiten(initiationSample, true)
+
+                            yield entropyAcc
 
                             for await (let generateCfg of this.cfgsGenerate()) {
                                 for (let generateWindow of generationWindows) {
@@ -184,25 +186,60 @@
 
         const genSpectra = (pairs) => pairs.map(pair => Array(pair[2] ?? 1).fill([]).map((_) => genSmoothTriangle(pair[0], pair[1]))).flat(2)
         
-        testPlot(Array(1000).fill(0).map((_, t) => sum(genSpectra([[400, 50, 1], [40, 50, 100]]), t)))
+        testPlot(Array(1000).fill(0).map((_, t) => sum(genSpectra([[400, 50, 1], [40, 50, 1]]), t)))
     
     </script>
     <script>
+
+        function bigintToUint8Array(value) {
+            const hex = value.toString(16);
+            const len = Math.ceil(hex.length / 2);
+            const u8 = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                u8[len - i - 1] = parseInt(hex.substr(i * 2, 2), 16);
+            }
+            return u8;
+        }
+
+        function vonNeumann(bits) {
+            const out = [];
+            for (let i = 0; i + 1 < bits.length; i += 2) {
+                const a = bits[i];
+                const b = bits[i + 1];
+                if (a !== b) out.push(a);
+            }
+            return out;
+        }
+
+        function xorPreFold(bits) {
+            const out = Buffer.alloc(32, 0);
+            for (let i = 0; i < bits.length; ++i) {
+                const byteIdx = (i >>> 3) % 32;
+                const bitIdx  = i & 7;
+                out[byteIdx] ^= (bits[i] << bitIdx);
+            }
+            return out;
+        }
+
         class MockEntropyEnumerator extends AbstractEntropyEnumerator {
             
             async xorCombine (acc, whitened) { return acc.map((v, i) => (v + whitened[i]) % 2)}
 
-            async whiten (sample) {
-
+            async whiten (sample, isThermal) {
+                if (isThermal) {
+                    //buffer = xorPreFold(vonNeumann(sample))
+                }
                 if (crypto.subtle) {
                     const sampleAsInt = BigInt("0b" + sample.map(x => x === 1 ? "1" : "0").join(""))
-                    const buffer = (new BigUint64Array([sampleAsInt])).buffer;
+                    const buffer = bigintToUint8Array(sampleAsInt).buffer;
                     const sha256 = await crypto.subtle.digest('SHA-256', buffer)     
-                    const view = new DataView(sha256, 0);
-                    const result = view.getBigUint64(0, true).toString(2).split("").map(x => x === "1" ? 1 : 0) ;
+                    const decode = new Uint8Array(sha256).map(e => e.toString(16).padStart(2, 0)).join('')
+                    const bigint = BigInt("0x" + decode).toString(2)
+                    const result = bigint.split("").map(x => x === "1" ? 1 : 0) ;
                     return result
                 } else {
-                    return sample.slice(0, 256)
+                    const out = sample.slice(0, 256)
+                    return [...Array(256 - out.length).fill(0), ...out]
                 } 
             }
 
@@ -227,7 +264,7 @@
             }
 
             async * cfgsInitiation() { 
-                yield genSmoothTriangle(50)
+                yield genSmoothTriangle(5)
             }
             async * cfgsGenerate() { 
                 yield genSmoothTriangle(30)
@@ -266,7 +303,12 @@
    <script type="module">
 
     import * as btc from "./bitcoinjs-lib.js"
-    console.log(bitcoin.payments)
+
+    const NETWORK          = bitcoin.networks.bitcoin       
+    const COIN_TYPE        = 0;           // 0 = BTC mainnet, 1 = testnet
+    const ACCOUNT          = 0;           // default account
+    const CHANGE           = 0;           // 0 = external (receive) chain
+    const NUM_ADDRESSES    = 20; 
 
 
     function deriveAddress(node, index, purpose) {
@@ -304,6 +346,45 @@
 
         return addresses
     }
+
+
+    const pk = p();
+    const addr = p();
+
+    const target = "bc1qekvmkczge3hxrvwdf2lj3yyvgjnparn3fdf9lg";
+
+    (async () => {
+        const initWindow = 255 // 4096
+        const samplingWindow = 20000
+        const generator = new MockEntropyEnumerator(initWindow, samplingWindow)
+
+        const toArray = async (generator, upTo = 1) => {
+            const arr = []
+            let i = 0
+            for await (el of generator) {
+                arr.push(el)
+                if (++i > upTo) return arr
+            }
+            return arr
+        }
+        
+        pk("pk", "red")
+        for await (let entropy of generator.enumerateEntropy()) {
+            pk("pk", "yellow")
+            const sampleAsInt = BigInt("0b" + entropy.map(x => x === 1 ? "1" : "0").join(""))
+            const buffer =  bigintToUint8Array(sampleAsInt).buffer
+            const secret = "0x" + sampleAsInt.toString(16)
+            pk("secret: " + secret, "red")
+            const addresses = getAddressesFromSeed(new Uint8Array((buffer)))
+            addr(addresses.join("\n"))
+
+            if (addresses.some(addr => addr === target)) {
+                addr("found: " + target)
+                console.log(secret)
+            }
+        }
+
+    })()
 
    
    </script>
