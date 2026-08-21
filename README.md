@@ -34,6 +34,6 @@ Layman explanation:
 
 Number 3 appears in nature more often than 198394838854. Shannon, however, assumed same likelihood.
 
-Size of a number is not necessary important. 300000000, 3232323232 have similar high likelihood of appearance with 3, while 285759 is much less likely. 
+Size of a number is not necessarily important. 300000000, 3232323232 have similar high likelihood of appearance with 3, while 285759 is much less likely. 
 
 What important is how hard is to find a way to create number and how hard is it to create it. 
