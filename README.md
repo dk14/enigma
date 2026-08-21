@@ -27,3 +27,13 @@ Additionally, `trng.html` contains typical TRNG replica, abstracting from physic
 Enigma is expected to find this replica fast, given proper simplicity control.
 
 P.S. No AI was used to write the apps.
+
+-------
+
+Layman explanation:
+
+Number 3 appears in nature more often than 198394838854. Shannon, however, assumed same likelihood.
+
+Size of a number is not necessary important. 300000000, 3232323232 have similar high likelihood of appearance with 3, while 285759 is much less likely. 
+
+What important is how hard is to find a way to create number and how hard is it to create it. 
