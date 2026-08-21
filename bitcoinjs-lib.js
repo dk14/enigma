@@ -11038,7 +11038,7 @@ await void 0;
 initEccLib(lib_exports);
 var bip32 = BIP32Factory(lib_exports);
 window.bitcoin = esm_exports3;
-window.bip32 = esm_exports3;
+window.bip32 = bip32;
 export {
   bip32,
   esm_exports3 as bitcoin
