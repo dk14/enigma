@@ -77,13 +77,26 @@
             return buffer.reverse()
         }
 
+        function bigintToUint8Array(value) {
+            const hex = value.toString(16);
+            const len = Math.ceil(hex.length / 2);
+            const u8 = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                u8[len - i - 1] = parseInt(hex.substr(i * 2, 2), 16);
+            }
+            return u8;
+        }
+
         const render = () => {
             const audioFrameSize = 0
             const imageFrameSize = canvas.width * canvas.height * 4
             const frameSize = imageFrameSize + audioFrameSize
-            const rawImage = new Uint8ClampedArray(tape.slice(cursor * frameSize, cursor * frameSize + imageFrameSize))
+            const rawImage = new Uint8ClampedArray(tape.slice(cursor * frameSize, cursor * frameSize + imageFrameSize).map(x => [...bigintToUint8Array(x)]).flat())
             if (rawImage.length >= frameSize) {
                 ctx.putImageData(new ImageData(rawImage, canvas.width, canvas.height), 0, 0)
+            } else {
+                const adjusted = new Uint8ClampedArray([...rawImage, ...Array(imageFrameSize - rawImage.length).fill(0)])
+                ctx.putImageData(new ImageData(adjusted, canvas.width, canvas.height), 0, 0)
             }
             if (cursor * frameSize > tape.length) cursor = 0
             requestAnimationFrame(render)
@@ -474,7 +487,7 @@
             }
         }
 
-        let n = 20
+        let n = 40
 
         while (++n) {
             const vars = Array(n).fill(0).map((_, i) => i)
@@ -878,7 +891,7 @@
         const generator = enumerateMatricies()
 
         while (true) {
-            if (attempts % 10 === 0) await(new Promise(o => setTimeout(() => o(true), 1)))
+            if (attempts % 1000 === 0) await(new Promise(o => setTimeout(() => o(true), 1)))
             if (paused) await(new Promise(o => setInterval(() => {if (!paused) o(true)}, 10)))
 
             while (jobs.length < poolSize) {
@@ -1008,7 +1021,7 @@
         //return
 
 
-        const bytes = 1
+        const bytes = 2
         const getRandom = () => {
             const array = new Uint8Array(bytes);
             crypto.getRandomValues(array);
@@ -1018,11 +1031,17 @@
         const candidate = getRandom()
 
         const max = 2n ** (8n * BigInt(bytes))
+
+        let maxObserved = 0n
+
+        let maxCovered = 5n
         
         await enumerateParUntil(x => {
-            if (render) predicate(`====> ${x % max} === ${candidate} ?`, (x % max) === candidate ? "green" : "red")
+            if (x === maxCovered + 1n) maxCovered = x
+            if (x > maxObserved) maxObserved = x
+            if (render) predicate(`====> ${x % max} === ${candidate} ?\n\nmax_covered = ${maxCovered}, max_observed = ${maxObserved}`, (x % max) === candidate ? "green" : "red")
             //g(getRandom())
-            g(x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x)
+            g(x)// * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x)
             return  x % max === candidate //|| x > 900
         })
     })()
