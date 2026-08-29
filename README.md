@@ -44,9 +44,9 @@ What important is how hard is to find a way to create number and how hard is it 
 
 Interpretation of results:
 
-Currently, without simplicity control (naive version), tested against `crypto.getRandomValues` on MacBook Pro M1. 
+Currently, without simplicity control (naive version, heuristic attempt with chosen hyper-parameters), tested against `crypto.getRandomValues` on MacBook Pro M1. 
 
-For a 2-bytes of "randomness", the algorithm often finds "random" value faster than brute-force. 
+For two bytes of "randomness", the algorithm often finds "random" value faster than brute-force. 
 
 22 vars: 
 
@@ -59,7 +59,7 @@ For a 2-bytes of "randomness", the algorithm often finds "random" value faster t
 - 26231 found after trying 78400 programs (overshoot)
 - 19010 found after trying 1100 programs
 
-If we naively take uniform assumption (standard conventional security assumption) - then 39% of generated keys can be found 10 times faster than brute-force. 
+If we naively take uniform assumption (standard conventional security assumption) - then 39% of generated keys can be found 10 times faster than brute-force. If the goal is to find the first vulnerable key among 10 keys (e.g. used for certificate or wallet) - then such key can be found 10 times faster than brute-force, 4 keys out of 10 can be found 10 times faster than brute-force.
 
 In reality the function is non-monotonic, so no probability distribution applies, every new observation creates new distribution. It is only argued that under standard security assumptions, the algorithm outputs alarming statistics for secure enclaves.
 
