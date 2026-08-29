@@ -50,18 +50,19 @@ For a 2-bytes of "randomness", the algorithm often finds "random" value faster t
 
 22 vars: 
 
-19770 found after trying 4500 programs
-60681 found after trying 7300 programs
-15891 found after trying 54300 programs (overshoot)
-59611 not found after trying 100000 programs
-7751 found after trying 76900 programs (overshoot)
-26423 found after trying 44100 programs (overshoot)
-26231 found after trying 78400 programs (overshoot)
-19010 found after trying 1100 programs
+- 19770 found after trying 4500 programs
+- 60681 found after trying 7300 programs
+- 15891 found after trying 54300 programs (overshoot)
+- 59611 not found after trying 100000 programs
+- 7751 found after trying 76900 programs (overshoot)
+- 26423 found after trying 44100 programs (overshoot)
+- 26231 found after trying 78400 programs (overshoot)
+- 19010 found after trying 1100 programs
 
 If we naively take uniform assumption (standard conventional security assumption) - then 39% of generated keys can be found 10 times faster than brute-force. 
 
 In reality the function is non-monotonic, so no probability distribution applies, every new observation creates new distribution. It is only argued that standard security assumptions output alarming statistics for secure enclaves.
 
+If we consider physical limitations on human thinking and computation, then situation becomes actually alarming, since "simplicity control" would guess algorithms that naturally come first "to the mind or computer", even if they kept secret.
 
 
