@@ -64,8 +64,10 @@
 
         try {navigator.wakeLock.request();} catch {}
 
+        const info = p()
 
-        let cursor = 0
+
+        window.cursor = 0
         const tape = []
 
         const toByteArray = (value) => {
@@ -77,21 +79,22 @@
             return buffer.reverse()
         }
 
-        function bigintToUint8Array(value) {
-            const hex = value.toString(16);
-            const len = Math.ceil(hex.length / 2);
-            const u8 = new Uint8Array(len);
-            for (let i = 0; i < len; i++) {
-                u8[len - i - 1] = parseInt(hex.substr(i * 2, 2), 16);
-            }
-            return u8;
-        }
-
-        const render = () => {
+        const getFrameDimensions = () => {
             const audioFrameSize = 0
             const imageFrameSize = canvas.width * canvas.height * 4
             const frameSize = imageFrameSize + audioFrameSize
-            const rawImage = new Uint8ClampedArray(tape.slice(cursor * frameSize, cursor * frameSize + imageFrameSize).map(x => [...bigintToUint8Array(x)]).flat())
+            return [frameSize, imageFrameSize, audioFrameSize]
+        }
+
+        const getFrameAtCursor = (cursor, frameSize, targetFrameSize, shift = 0) => 
+            new Uint8ClampedArray(tape.slice(cursor * frameSize + shift, cursor * frameSize + shift + targetFrameSize))
+
+        const render = () => {
+            const [frameSize, imageFrameSize, audioFrameSize] = getFrameDimensions()
+            
+            const rawImage = getFrameAtCursor(cursor, frameSize, imageFrameSize)
+            const rawAudio = getFrameAtCursor(cursor, frameSize, audioFrameSize, imageFrameSize)
+
             if (rawImage.length >= frameSize) {
                 ctx.putImageData(new ImageData(rawImage, canvas.width, canvas.height), 0, 0)
             } else {
@@ -102,10 +105,44 @@
             requestAnimationFrame(render)
         }
 
-        const progressCursor = () => {
-            cursor++ 
+        const matchScore = (window1, window2) => {
+            let score = window1.filter((x, i) => x === window2[i]).length
+            const maxDivisor = 5
+
+            for (let divisor = 2; divisor < maxDivisor; divisor ++) {
+                score += window1.filter((x, i) => Math.ceil(x / divisor) === Math.ceil(window2[i] / divisor)).length / divisor
+            }
+            return score
         }
-        addEventListener("mousemove", (event) => progressCursor())
+
+        const progressCursor = (limit) => {
+            const [frameSize, _, __] = getFrameDimensions()
+            const currentWindow = getFrameAtCursor(cursor, frameSize, frameSize)
+
+            let maxMatch = 0
+            let maxLookForward = -1
+
+            for (let lookForward = 1; lookForward < limit; lookForward++) {
+                const newCursor = cursor + lookForward
+                if (newCursor > tape.length) break;
+                const newWindow = getFrameAtCursor(newCursor, frameSize, frameSize)
+                const score = matchScore(currentWindow, newWindow)
+                if (score > maxMatch) {
+                    maxMatch = score
+                    maxLookForward = lookForward
+                }
+            }
+
+            if (maxLookForward === -1) {
+                cursor++
+            } else {
+                cursor += maxLookForward
+            }
+
+            info(`graphics_cursor = ${cursor}`, "grey")
+        }
+
+        addEventListener("mousemove", (event) => progressCursor(4))
 
         ondevicemotion = () => progressCursor()
 
@@ -487,7 +524,7 @@
             }
         }
 
-        let n = 40
+        let n = 20
 
         while (++n) {
             const vars = Array(n).fill(0).map((_, i) => i)
@@ -1022,6 +1059,7 @@
 
 
         const bytes = 2
+
         const getRandom = () => {
             const array = new Uint8Array(bytes);
             crypto.getRandomValues(array);
@@ -1039,9 +1077,9 @@
         await enumerateParUntil(x => {
             if (x === maxCovered + 1n) maxCovered = x
             if (x > maxObserved) maxObserved = x
-            if (render) predicate(`====> ${x % max} === ${candidate} ?\n\nmax_covered = ${maxCovered}, max_observed = ${maxObserved}`, (x % max) === candidate ? "green" : "red")
+            if (render) predicate(`====> ${x % max} === ${candidate} ?\n\nmax_covered = ${maxCovered}, max_observed = ${maxObserved} \n`, (x % max) === candidate ? "green" : "red")
             //g(getRandom())
-            g(x)// * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x)
+            g(x) // * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x* x * x * x * x * x * x * x * x * x)
             return  x % max === candidate //|| x > 900
         })
     })()
