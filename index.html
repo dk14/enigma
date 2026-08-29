@@ -552,6 +552,38 @@
         }
     }
 
+    async function* enumerateMatriciesHyper (extraPredicates = undefined) {
+        window.index = 0
+
+        let radix = 20
+
+        while (++radix) {
+            for await (let hypercfg of yieldHyperCfg(radix)) {
+
+                const n = hypercfg.n
+                const diffOpsN = hypercfg.diffOpsN
+                const recurseOpsN = hypercfg.recurseOpsN
+
+                const vars = Array(n).fill(0).map((_, i) => i)
+
+                const recurseRange = [(extraPredicates?.recurseRange?.lower(n) ?? 4), (extraPredicates?.recurseRange?.upper(n) ?? (n / 2))]
+                const diffRange = [(extraPredicates?.diffRange?.lower(n) ?? 0), (extraPredicates?.diffRange?.upper(n) ?? (n / 3))]
+                const codiffRange = [(extraPredicates?.codiffRange?.lower(n) ?? 0), (extraPredicates?.codiffRange?.upper(n) ?? (n / 3))]
+
+                const deriveRange = (a, b) => Math.max(1, Math.floor((b - a) / hypercfg.spread.precision))
+
+                for await (let recursive of pickSubsets(rest(cotake(vars, 6), 2).map(x => n - x), recurseOpsN, [], undefined, true, false)) {
+                    for await (let diff of pickSubsets(setdiff(vars, recursive), diffOpsN, [], undefined, true, false)) {
+                        for await (let codiff of pickSubsets(setdiff(setdiff(vars, recursive), diff), diffOpsN, [], undefined, true, false)) {
+                            yield* yieldMatricies(vars, recursive, diff, codiff, 1, initmat(n), initmat(n), extraPredicates, hypercfg.commutation, hypercfg.spread)
+                        }
+                    }
+                }   
+
+            }
+        }
+    }
+
     const validateMatrix = (matrix) => {
         const invalid = matrix.map((row, i) => !row.some(v => v === 1) && i > 0 || !row.every((v,  j) => v === 0 || j < i && matrix.some((other, l) => l === j)) ? i : null).filter(x => x !== null)
         if (invalid.length > 0) err(`deps: ${invalid}`)
