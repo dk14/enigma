@@ -61,8 +61,8 @@ For a 2-bytes of "randomness", the algorithm often finds "random" value faster t
 
 If we naively take uniform assumption (standard conventional security assumption) - then 39% of generated keys can be found 10 times faster than brute-force. 
 
-In reality the function is non-monotonic, so no probability distribution applies, every new observation creates new distribution. It is only argued that standard security assumptions output alarming statistics for secure enclaves.
+In reality the function is non-monotonic, so no probability distribution applies, every new observation creates new distribution. It is only argued that under standard security assumptions, the algorithm outputs alarming statistics for secure enclaves.
 
-If we consider physical limitations on human thinking and computation, then situation becomes actually alarming, since "simplicity control" would find algorithms that naturally come first "to the mind or computer", even if they kept secret.
+If we consider physical limitations on human thinking and computation together with unpredictability of the time needed to meet given threshold, then situation becomes actually alarming, since "simplicity control" would find algorithms that naturally come first "to the mind or computer", even if they kept secret.
 
 
