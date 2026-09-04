@@ -8,6 +8,11 @@ Static memoization ensures no equivalent algorithms are enumerated.
 
 Simplicity control (to be improved): from simplest to most complex programs, thus from simplest to most complex outputs.
 
+> Simplicity control will employ advanced form of memoization, discovering functionally equivalent sub-graphs (forall x. f(x) = g(x)). Programs containing more recursion will be considered more simple in order to establish total order, unique in its expressive optimality. Hyper-parameter search will recursively re-use Enigma itself as generator for computationally natural orders (of parameters).
+>> This way it would model high-level reasoning of humans, start with programs that are physically easier for human programmer or mathematician to write out of most fundamental operations.
+>> 
+>> Length of the program does not imply its simplicity directly. Length of canonical (most expressive program) as measured in amount of Enigma-variables it employs is first, but not the only parameter to order programs fundamentally.
+
 --------
 
 Security applications:
