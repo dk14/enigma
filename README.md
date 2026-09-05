@@ -66,6 +66,8 @@ For two bytes of "randomness", the algorithm often finds "random" value faster t
 
 If we naively take uniform assumption (standard conventional security assumption) - then 39% of generated keys can be found 10 times faster than brute-force. If the goal is to find the first vulnerable key among 10 keys (e.g. used for certificate or wallet) - then such key can be found 10 times faster than brute-force, 4 keys out of 10 can be found 10 times faster than brute-force.
 
+> note on overshoots and "not found" - if the goal is to find at least one vulnerable key (e.g. "scanner tool"), overshoots become non-issue effectively - only  best case scenario is relevant.
+
 In reality the function is non-monotonic, so no probability distribution applies, every new observation creates new distribution. It is only argued that under standard security assumptions, the algorithm outputs alarming statistics for secure enclaves.
 
 If we consider physical limitations on human thinking and computation together with mathematical unpredictability of the time needed to meet given threshold, then situation becomes actually alarming, since "simplicity control" would find algorithms that naturally come first "to the mind or computer", even if they kept secret.
