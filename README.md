@@ -32,7 +32,7 @@ Test cases:
 
 Enigma has DSL for test cases.
 
-Additionally, `trng.html` contains typical TRNG replica, abstracting from physical parameters. 
+Additionally, [`trng.html`](https://enigma.doomsdayexplorer.online/trng.html) contains typical TRNG replica, abstracting from physical parameters. 
 Enigma is expected to find this replica fast, given proper simplicity control.
 
 P.S. No AI was used to write the apps.
