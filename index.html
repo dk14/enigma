@@ -124,7 +124,7 @@
 
             for (let lookForward = 1; lookForward < limit; lookForward++) {
                 const newCursor = cursor + lookForward
-                if (newCursor > tape.length) break;
+                if (newCursor * frameSize > tape.length) break;
                 const newWindow = getFrameAtCursor(newCursor, frameSize, frameSize)
                 const score = matchScore(currentWindow, newWindow)
                 if (score > maxMatch) {
@@ -133,13 +133,16 @@
                 }
             }
 
-            if (maxLookForward === -1) {
+            if (maxLookForward === -1 ) {
                 cursor++
             } else {
-                cursor += maxLookForward
+                cursor += maxLookForward            
             }
 
-            info(`graphics_cursor = ${cursor}`, "grey")
+            const cap = Math.floor(tape.length / frameSize)
+            cursor = cap === 0 ? 0 : cursor % cap
+
+            info(`graphics_cursor = ${cursor} / ${tape.length / frameSize}`, "grey")
         }
 
         addEventListener("mousemove", (event) => progressCursor(4))
@@ -293,6 +296,8 @@
 
     const memoEqvPoolSize = 100000
 
+    const memoFnPoolSize = 100000
+
     let throttle = 4n
 
     const executeStepBound = 13300
@@ -300,6 +305,10 @@
     const makeKey = (n, initState, matrix, op) => `${initState.map(x => x?.toString())}\n\n${matrix.join("\n")}\n\n${op.join("\n")}\n------\n\n`
 
     const makeEqvKey = (n, state) => `${n}: ${state.map(x => x?.toString())}`
+
+    const makeFnKey = (matrix, ops) => `${matrix.join("\n")} \n\n ${ops.join("\n")}`
+
+    const makeFnValue = (matrix, coverage) => {matrix, coverage}
 
     window.hits = 0
 
@@ -322,8 +331,11 @@
         const checkEquivalence = (state) => {
             if (static) {
                 const eqvKey = makeEqvKey(n, state)
+                const fnKey = makeFnKey(matrix, op)
+
                 const isEqv = memoEqv.has(eqvKey)
                 memoEqv.add(eqvKey)
+
                 if (isEqv) window.hits++
                 return isEqv
             } else return false
@@ -469,6 +481,7 @@
         if (variable === vars.length) { 
             window.index++
             matrix[1][0] = 1
+            ops[0][1] = 2
 
             const lastDeps = listDeps(matrix.length - 1, matrix)
             lastDeps.add(matrix.length - 1)
@@ -491,7 +504,11 @@
        
         for await (let incoming of incomingGen) {  
             matrix[variable].forEach((_, j) => {matrix[variable][j] = 0; ops[variable][j] = 0})
-            incoming.forEach(j => { matrix[variable][variable -j - 1] = 1; ops[variable][variable - j - 1] = opnum })
+            incoming.forEach((j, k) => { 
+                const idx = args === 4 && (k === 1 || k == 2) ? j : variable - j - 1
+                matrix[variable][idx] = 1; 
+                ops[variable][idx] = opnum 
+            })
             
 
             const [commutationScore, commutationComplexity] = opnum === 3 ? scoreRecurse(variable, matrix, ops) : score(variable, matrix, ops)
@@ -524,7 +541,7 @@
             }
         }
 
-        let n = 20
+        let n = 15
 
         while (++n) {
             const vars = Array(n).fill(0).map((_, i) => i)
@@ -535,7 +552,7 @@
 
             const deriveRange = (a, b) => Math.max(1, Math.floor((b - a) / hypercfg.spread.precision))
 
-            for (let recurseOpsN = recurseRange[0]; recurseOpsN <= recurseRange[1]; recurseOpsN += deriveRange(recurseRange[0], recurseRange[1])) {
+            for (let recurseOpsN = recurseRange[1]; recurseOpsN >= recurseRange[0]; recurseOpsN -= deriveRange(recurseRange[0], recurseRange[1])) {
                 for (let diffOpsN = diffRange[0]; diffOpsN <= diffRange[1]; diffOpsN += deriveRange(diffRange[0], diffRange[1])) {
                     for (let codiffOpsN = codiffRange[0]; codiffOpsN <= codiffRange[1]; codiffOpsN += deriveRange(codiffRange[0], codiffRange[1])) {
                         //todo add skips to pickers
@@ -839,7 +856,11 @@
         const deps = indicies(matrix[i])
 
         if (deps.length === 0) err("wrong matrix")
-        if (deps[0] === 0) { mem[i] = 1n; return }
+        if (deps[0] === 0) { 
+
+            mem[i] = cfg.ops[0][i] === 0 ? 1n : BigInt(cfg.ops[0][i]); 
+            return 
+        }
 
         let stop = false
 
