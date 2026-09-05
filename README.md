@@ -1,5 +1,7 @@
 This repo contains Enigma webapp demonstrating enumeration of all possible terminating programs (`index.html`).
 
+> The research is presented as HTML for demo purposes. HTML will be split into typescript files, and a library will be published.
+
 Abstract machine has sum, diff and times (dynamically aka dependently bounded recursion) operations making it computationally complete.
 
 Static termination check: DAG means terminating program.
