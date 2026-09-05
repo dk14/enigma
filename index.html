@@ -481,7 +481,9 @@
         if (variable === vars.length) { 
             window.index++
             matrix[1][0] = 1
+            matrix[2][0] = 1
             ops[0][1] = 2
+            ops[0][2] = 1
 
             const lastDeps = listDeps(matrix.length - 1, matrix)
             lastDeps.add(matrix.length - 1)
@@ -546,14 +548,14 @@
         while (++n) {
             const vars = Array(n).fill(0).map((_, i) => i)
 
-            const recurseRange = [(extraPredicates?.recurseRange?.lower(n) ?? 4), (extraPredicates?.recurseRange?.upper(n) ?? (n / 2))]
-            const diffRange = [(extraPredicates?.diffRange?.lower(n) ?? 0), (extraPredicates?.diffRange?.upper(n) ?? (n / 3))]
-            const codiffRange = [(extraPredicates?.codiffRange?.lower(n) ?? 0), (extraPredicates?.codiffRange?.upper(n) ?? (n / 3))]
-
+            const recurseRange = [(extraPredicates?.recurseRange?.lower(n) ?? 4), (extraPredicates?.recurseRange?.upper(n) ?? (n - 2))]
+            
             const deriveRange = (a, b) => Math.max(1, Math.floor((b - a) / hypercfg.spread.precision))
 
             for (let recurseOpsN = recurseRange[1]; recurseOpsN >= recurseRange[0]; recurseOpsN -= deriveRange(recurseRange[0], recurseRange[1])) {
+                const diffRange = [(extraPredicates?.diffRange?.lower(n) ?? 0), (extraPredicates?.diffRange?.upper(n) ?? (n - recurseOpsN))]
                 for (let diffOpsN = diffRange[0]; diffOpsN <= diffRange[1]; diffOpsN += deriveRange(diffRange[0], diffRange[1])) {
+                    const codiffRange = [(extraPredicates?.codiffRange?.lower(n) ?? 0), (extraPredicates?.codiffRange?.upper(n) ?? ((n - recurseOpsN) - diffOpsN))]
                     for (let codiffOpsN = codiffRange[0]; codiffOpsN <= codiffRange[1]; codiffOpsN += deriveRange(codiffRange[0], codiffRange[1])) {
                         //todo add skips to pickers
                         for await (let recursive of pickSubsets(rest(cotake(vars, 6), 2).map(x => n - x), recurseOpsN, [], undefined, true, false)) {
