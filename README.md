@@ -1,4 +1,4 @@
-This repo contains Enigma webapp demonstrating enumeration of all possible terminating programs (`index.html`).
+This repo contains Enigma webapp demonstrating enumeration of all possible terminating programs ([`index.html`](enigma.doomsdayexplorer.online/)).
 
 > The research is presented as HTML for demo purposes (it also acts as a notebook). HTML will be split into typescript files, and a documented library will be published, akin to how it was done with [mg-peers](https://mg-peers.doomsdayexplorer.online/docs/front). 
 
