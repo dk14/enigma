@@ -983,7 +983,7 @@
         const generator = enumerateMatricies()
 
         while (true) {
-            if (attempts % 1000 === 0) await(new Promise(o => setTimeout(() => o(true), 1)))
+            if (attempts % 10 === 0) await(new Promise(o => setTimeout(() => o(true), 1)))
             if (paused) await(new Promise(o => setInterval(() => {if (!paused) o(true)}, 10)))
 
             while (jobs.length < poolSize) {
