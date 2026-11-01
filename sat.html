@@ -1,0 +1,337 @@
+<html>
+    <body></body>
+    <script>
+            document.body.style.backgroundColor = "black"
+        const p = () => {
+            const pre = document.createElement("pre")
+            pre.style.userSelect = "none"
+            pre.style.color = "green"
+            document.body.appendChild(pre)
+            return (text, color = "green") => {
+                pre.style.color = color
+                pre.textContent = text + "\n"
+            }
+        }
+    </script>
+    <script>
+        
+        const v = (ctx) => {
+            if (!ctx.counter) ctx.counter = 0
+            ctx.counter++
+            return ctx.counter
+        }
+
+        const and = (...arr) => {
+            return {
+                op: 'and',
+                data: arr
+            }
+        }
+
+        const or = (...arr) => {
+            return {
+                op: 'or',
+                data: arr
+            }
+        }
+
+        const not = (exp) => {
+            return {
+                op: 'not',
+                exp: exp
+            }
+        }
+
+    </script>
+    <script>
+        // High-level DSL for algorithms
+
+        const one = (templateVar = 1) => {
+            return or(templateVar, not(templateVar))
+        }
+
+        const zero = (templateVar = 1) => {
+            return and(templateVar, not(templateVar))
+        }
+
+        const xor = (a, b) => {
+            return or(and(a, not(b)), and(not(a), b))
+        }
+
+        const allocateArray = (n, ctx) => {
+            return Array(n).fill(0).map(x => v(ctx))
+        }
+
+        const andArrays = (arr1, arr2) => {
+            return arr1.map((x, i) => and(x, arr2[i]))
+        }
+
+        const orArrays = (arr1, arr2) => {
+            return arr1.map((x, i) => or(x, arr2[i]))
+        }
+
+        const xorArrays = (arr1, arr2) => {
+            return arr1.map((x, i) => xor(x, arr2[i]))
+        }
+
+        const shiftArray = (arr, k) => {
+            return arr.map((x, i) => arr[x+k] ?? 0)
+        }
+
+        const numberToArray = (num, k, templateVar = 1) => {
+            return num.toString(2).padStart(k, '0').split('').map(x => x === '1' ? one(templateVar) : zero(templateVar))
+        }
+
+        const solutionToNum = (exp, n) => {
+            const bitarray = []
+            exp.data.forEach(x => {
+                if (isVal(x)) {
+                    bitarray[x - 1] = 1
+                }
+                if (isNotVal(x)) {
+                    bitarray[x.exp - 1] = 0
+                }
+            })
+
+            for (i = 0; i <= n; i++) {
+                if (!bitarray[i]) {
+                    bitarray[i] = 0
+                }
+            }
+            const str = bitarray.map(x => x.toString()).join()
+            //console.log(str)
+            return parseInt(str, 2)
+        }
+
+        const eqArrays = (arr1, arr2) => {
+            return and(...arr1.map((x, i) => not(xor(x, arr2[i]))))
+        }
+
+
+
+
+    </script>
+    <script>
+
+        const denot = (exp) => { //todo: fix
+            if (exp.op === 'not') {
+                if (exp.exp.op === 'or') {
+                    return {
+                        op: 'and',
+                        data: exp.exp.data.map(x => denot(not(x)))
+                    }
+                } else if (exp.exp.op === 'and'){
+                    return {
+                        op: 'or',
+                        data: exp.exp.data.map(x => denot(not(x)))
+                    }
+                } else if (exp.exp.op === 'not'){
+                    return denot(exp.exp.exp)
+                } else {
+                    return exp
+                }
+            } else {
+                if (exp.op) {
+                    return {
+                        op: exp.op,
+                        data: exp.data.map(x => denot(x))
+                    }
+                } else {
+                    return exp
+                }
+                
+            }
+        }
+
+        const collapseBraces = (exp) => {
+            if (exp.op === 'or') {
+                exp.data = exp.data.map(x => {
+                    if (x.op === 'or') {
+                        return x.data.map(x => collapseBraces(x))
+                    } else return collapseBraces(x)
+                }).flat()
+            }
+                    
+            if (exp.op === 'and') {
+                exp.data = exp.data.map(x => {
+                    if (x.op === 'and') {
+                        return x.data.map(x => collapseBraces(x))
+                    } else return collapseBraces(x)
+                }).flat()
+            }
+
+            if (exp.op === 'not' && exp.exp.op !== undefined) return collapseBraces(denot(exp))
+
+            return exp
+
+        }
+
+        const isVal = exp => !exp.op
+        const isNotVal = exp => exp.op === 'not'
+        const isSomeVal = exp => isVal(exp) || isNotVal(exp)
+
+        const checkContradiction = (exp, outerAndPositive, outerAndNegative) => {
+            if (!(isSomeVal(exp))) {
+                return solve(exp, outerAndPositive, outerAndNegative)
+            } else {
+   
+                if (isNotVal(exp) && outerAndPositive.find(x => exp.exp !== undefined && exp.exp === x)) {
+                    return undefined
+                }
+
+                if (isVal(exp) && outerAndNegative.find(x => exp.exp === x)) {
+                    return undefined
+                }
+
+                return exp
+            }
+        }
+
+        //todo: fix leaf contradictions in extra
+        const solve = (exp, outerAndPositive = [], outerAndNegative = [], k = 1) => {
+            //collapse every OR by selecting first expression that does not contain inversion from outer ands
+            
+            //console.log("[[[[" + JSON.stringify(exp))
+
+            if (!exp.op) return exp
+
+            if (exp.op === 'not') {
+                if (exp.exp.op) throw "needs denot!"
+                return exp
+            }
+
+            if (exp.op === 'and') {
+
+                const extra = exp.data.filter(x => isSomeVal(x))
+                const toSolve = exp.data.filter(x => !isSomeVal(x))
+
+                extra.filter(x => isVal(x)).forEach(x => outerAndPositive.push(x))
+                extra.filter(x => isNotVal(x)).forEach(x => outerAndNegative.push(x))
+
+                const positions = toSolve.map(_ => 1)
+
+                const limits = toSolve.map(exp => exp.data.length)
+
+                const toStop = () => {
+                    return positions.every((x, i) => x === limits[i])
+                }
+
+                const solveRest = () => {
+
+                    let result = []
+                    let i = 0
+                    for(x of toSolve) {
+                        //console.log(JSON.stringify(x) + "  ---" + JSON.stringify(toSolve))
+                        const res = solve(x, outerAndPositive, outerAndNegative, positions[i])
+
+                        if (res) {  
+
+                            //console.log(JSON.stringify(res))
+                            if (res.filter) {
+                                res.filter(x => isVal(x)).forEach(x => outerAndPositive.push(x))
+                                res.filter(x => isNotVal(x)).forEach(x => outerAndNegative.push(x))
+
+                                result = [...result, ...res]
+
+                            } else {
+                                result = [...result, res]
+                            }
+                            
+
+                        } else {
+                            return undefined
+                        }
+                        
+                        i++
+                    } 
+                    return result 
+
+                }
+
+                let result = []
+
+                let attempts = 0
+
+                while(!toStop()) {
+                    attempts++
+                    result = solveRest()
+                    if (!result) {
+
+                        let j = 0
+                        while (true) {
+                            positions[j]++
+                            if (positions[j] > limits[j]) {
+                                positions[j] = 1
+                                j++
+                            } else break
+                        }
+                    } else {
+                        return and(...[...extra, ...result])
+                    }
+
+                } 
+
+                return undefined    
+            }
+
+            if (exp.op === 'or'){
+                let count = 0
+                for (x of exp.data) {
+                    // console.log(x)
+                   // console.log(outerAndPositive)
+                    const solved = checkContradiction(x, outerAndPositive, outerAndNegative)
+                    // console.log(";;;;;" + k)
+                   //console.log(k + "  " + solved)
+                    if (solved) {
+                        count++
+                        if (count === k) {
+                            return solved
+                        }
+                    }
+                }
+            } 
+        }
+
+        const evaluate = (exp, input) => {
+            if (!exp.op) return input[exp - 1]
+            if (exp.op === 'and') return exp.data.map(x => evaluate(x, input)).reduce((a, b) => a && b)
+            if (exp.op === 'or') return exp.data.map(x => evaluate(x, input)).reduce((a, b) => a || b)
+            if (exp.op === 'not') return !(evaluate(exp.exp, input))
+        }
+
+        const show = (exp) => {
+            if (!exp) return "not found"
+            if (!exp.op)  return "$" + exp
+            if (exp.op === 'and') return `${exp.data.map(x => show(x)).join('')}`
+            if (exp.op === 'or') return `(${exp.data.map(x => show(x)).join(' + ')})`
+            if (exp.op === 'not') return ` -(${show(exp.exp)}) `
+        }
+    </script>
+ 
+    <script>
+        const greeting = p()
+        greeting("hello")
+
+        const ctx = {}
+        const a = v(ctx)
+        const b = v(ctx)
+
+        const expression = collapseBraces(not(or(and(a, b), or(b, b))))
+
+        const look = p()
+        look(show(expression))
+
+        const evalTest = p()
+        evalTest(evaluate(expression, [true, true]))
+
+        const solveTest = p()
+        solveTest(show(solve(and(a, or(not(a), not(b)))), 3))
+
+        const arrExp = eqArrays(allocateArray(5, ctx), numberToArray(5, 5))
+        console.log(show(collapseBraces(denot(arrExp))))
+        solveTest(show(solve(collapseBraces(denot(arrExp)))))
+        
+
+
+    </script>
+</html>
