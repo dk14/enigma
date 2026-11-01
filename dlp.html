@@ -1,0 +1,65 @@
+<html>
+    <body></body>
+    <script>
+            document.body.style.backgroundColor = "black"
+        const p = () => {
+            const pre = document.createElement("pre")
+            pre.style.userSelect = "none"
+            pre.style.color = "green"
+            document.body.appendChild(pre)
+            return (text, color = "green") => {
+                pre.style.color = color
+                pre.textContent = text + "\n"
+            }
+        }
+    </script>
+    <script>
+        const factorize = (num) => {return []}
+
+        const exp = (base, pow, n) => {
+            return 100n
+        }
+
+        const commonFactors = (a, b) => {
+            return 100n
+        }
+
+        const n = 500n
+
+        const base = 445n
+
+        const target = exp(base, 20000n, n)
+
+        //1. represent target as factors(target) + n * x; base as factors(base)
+
+        const baseFac = factorize(base)
+
+        const targetFac = factorize(target)
+
+        //2. x can be anything, move out common(between base and target) factors from taget: x := common * x; common * (distinct + n * x)
+
+        var common = commonFactors(baseFac, targetFAC)
+
+        //3. x can be anything, move the n out of x: x := 1 + x; common * (distinct + n + n * x)
+
+        //refactorize distinct + n, move out commonFactors; repeat until distinct = 1
+
+        //common will contain only factors from base (x can be assumed 0), but they might not have proper powers
+
+        //4. memorize this semi-matching common as initial state of cycle; continue cycling
+
+        const semiMatchingCommon = structuredClone(common)
+
+        // repeat "x: x := 1 + x; common * (distinct + n + n * x)" trick until it arrives at "distinct = 1" again
+
+        // compare common powers with semiMatchingCommon powers, calculate deltas
+
+        //5. solve system of linear equations (for powers) using gcd in order to figure where their cycle will intersect with baseFac powers cycle
+
+        //divide resulting "common" powers by "base" powers - that's the logarithm
+
+
+
+
+    </script>
+ </html>
