@@ -85,5 +85,5 @@ If we consider physical limitations on human thinking and computation together w
 >> 
 >> It is WIP and we encourage to take current results as inspiration for future work. White-hat aspect of Doomsday Explorer Protocol additionally gives ethical assurances for experienced security researchers, since the protocol is compatible with Enigma - Enigma is NOT a doomsday device, ignorance is. Even in current PoC state, Enigma can output quite big numbers - so it is ready to integrate to the protocol if/when the project receives proper competent public attention and lifts off.
 >>
->> `sat.html` and `dlp.html` contain initial drafts for fast SAT and DLP solvers. My very cheap phone got stolen with copies (or maybe lost it in the desert), so I figured better publish all research openly and regularly, just in case. It's more dangerous for public, but safer for myself.
+> `sat.html` and `dlp.html` contain initial drafts for fast SAT and DLP solvers. My very cheap phone got stolen with copies (or maybe lost it in the desert), so I figured better publish all research openly and regularly, just in case. It's more dangerous for public, but safer for myself.
 
