@@ -183,7 +183,7 @@
                     return undefined
                 }
 
-                return exp
+                return solve(exp, outerAndPositive, outerAndNegative)
             }
         }
 
@@ -191,16 +191,23 @@
         const solve = (exp, outerAndPositive = [], outerAndNegative = [], k = 1) => {
             //collapse every OR by selecting first expression that does not contain inversion from outer ands
             
-            //console.log("[[[[" + JSON.stringify(exp))
+            //console.log("[[[[" + JSON.stringify(show(exp)))
 
-            if (!exp.op) return exp
+            if (!exp.op) { 
+                if (outerAndNegative.some(x => x === exp)) return undefined
+                outerAndPositive.push(exp)
+                return exp
+            }
 
             if (exp.op === 'not') {
                 if (exp.exp.op) throw "needs denot!"
+                if (outerAndPositive.some(x => x === exp.exp)) return undefined
+                outerAndNegative.push(exp.exp)
                 return exp
             }
 
             if (exp.op === 'and') {
+                //console.log("+++++")
 
                 const extra = exp.data.filter(x => isSomeVal(x))
                 const toSolve = exp.data.filter(x => !isSomeVal(x))
@@ -217,25 +224,51 @@
                 }
 
                 const solveRest = () => {
+                    console.log("positions = " + positions)
+                    const tryOuterAndPositive = structuredClone(outerAndPositive)
+                    const tryOuterAndNegative = structuredClone(outerAndNegative)
 
                     let result = []
                     let i = 0
                     for(x of toSolve) {
-                        //console.log(JSON.stringify(x) + "  ---" + JSON.stringify(toSolve))
-                        const res = solve(x, outerAndPositive, outerAndNegative, positions[i])
+                        
+                        const res = solve(x, tryOuterAndPositive, tryOuterAndNegative, positions[i])
 
                         if (res) {  
+  
+             
 
-                            //console.log(JSON.stringify(res))
+                            const negativeSet = new Set(outerAndNegative)
+                            const positiveSet = new Set(outerAndPositive)
+                            
                             if (res.filter) {
-                                res.filter(x => isVal(x)).forEach(x => outerAndPositive.push(x))
-                                res.filter(x => isNotVal(x)).forEach(x => outerAndNegative.push(x))
+                                //console.log("999999")
 
+                                 //if (isVal(x) && negativeSet.has(x)) return undefined
+                                //if (isNotVal(x) && positiveSet.has(x.exp)) return undefined
+
+                                res.filter(x => isVal(x)).forEach(x => outerAndPositive.push(x))
+                                res.filter(x => isNotVal(x)).forEach(x => outerAndNegative.push(x.exp))      
+                                
+                                
+                                
                                 result = [...result, ...res]
 
                             } else {
+                                 
+                                if (isVal(res) && negativeSet.has(res)) {
+                                    //console.log(";;;\n\n\n")
+                                    //return undefined
+                                }
+                                //if (isNotVal(res) && positiveSet.has(res.exp)) return undefined
+                                
+                                
                                 result = [...result, res]
+                                
                             }
+
+                            //console.log(outerAndPositive)
+                           
                             
 
                         } else {
@@ -244,6 +277,9 @@
                         
                         i++
                     } 
+                    tryOuterAndPositive.forEach(x => outerAndPositive.push(x))
+                    tryOuterAndNegative.forEach(x => outerAndNegative.push(x))
+
                     return result 
 
                 }
@@ -277,16 +313,24 @@
             if (exp.op === 'or'){
                 let count = 0
                 for (x of exp.data) {
-                    // console.log(x)
-                   // console.log(outerAndPositive)
-                    const solved = checkContradiction(x, outerAndPositive, outerAndNegative)
-                    // console.log(";;;;;" + k)
-                   //console.log(k + "  " + solved)
+                    const tryOuterAndPositive = structuredClone(outerAndPositive)
+                    const tryOuterAndNegative = structuredClone(outerAndNegative)
+
+                    const solved = checkContradiction(x, tryOuterAndPositive, tryOuterAndNegative)
                     if (solved) {
                         count++
                         if (count === k) {
+
+                            tryOuterAndPositive.forEach(x => outerAndPositive.push(x))
+                           tryOuterAndNegative.forEach(x => outerAndNegative.push(x))
+
+                            console.log("\n\n\n\n\n\nsolved = " + show(solved))
+                            console.log("outer negatives = " + outerAndNegative)
+                            console.log("outer positives = " + outerAndPositive)
                             return solved
                         }
+                    } else {
+                        console.log("\n\n\n\n\n\n not solved")
                     }
                 }
             } 
@@ -316,7 +360,7 @@
         const a = v(ctx)
         const b = v(ctx)
 
-        const expression = collapseBraces(not(or(and(a, b), or(b, b))))
+        const expression = collapseBraces(and( or(not(a), not(b)), or(a, a)))
 
         const look = p()
         look(show(expression))
@@ -325,7 +369,7 @@
         evalTest(evaluate(expression, [true, true]))
 
         const solveTest = p()
-        solveTest(show(solve(and(a, or(not(a), not(b)))), 3))
+        solveTest(show(solve(expression), 3))
 
         const arrExp = eqArrays(allocateArray(5, ctx), numberToArray(5, 5))
         console.log(show(collapseBraces(denot(arrExp))))
