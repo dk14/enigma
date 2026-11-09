@@ -142,22 +142,66 @@
                 
             }
         }
+        
 
-        const collapseBraces = (exp) => { //todo: fix
-            if (exp.op === 'or') {
-                exp.data = () => exp.data().map(x => {
-                    if (x.op === 'or') {
-                        return x.data().map(x => collapseBraces(x))
-                    } else return collapseBraces(x)
-                }).flat()
+        const compactify = (exp) => {
+
+            const collapseOr = (exp) => {
+                if (exp.op === 'or') {
+                    let modified = false
+                    const res = exp.data().map(x => {
+                        if (x.op === 'or') {
+                             modified = true
+                            return x.data()
+                        } else return x
+                    }).flat()
+
+                    if (!modified) return undefined
+
+                    return {
+                        op: 'or',
+                        data: () => res
+                    }
+                } else return undefined
             }
-                    
-            if (exp.op === 'and') {
-                exp.data = () => exp.data().map(x => {
-                    if (x.op === 'and') {
-                        return x.data().map(x => collapseBraces(x))
-                    } else return collapseBraces(x)
-                }).flat()
+
+            const collapseAnd = (exp) => {
+                if (exp.op === 'and') {
+                    let modified = false
+                    const res = exp.data().map(x => {
+                        if (x.op === 'or') {
+                            modified = true
+                            return x.data()
+                        } else return x
+                    }).flat()
+
+                    if (!modified) return undefined
+
+                    return {
+                        op: 'or',
+                        data: () => res
+                    }
+                } else return undefined
+            }
+            
+             
+            let acc = exp
+            let modified = false
+            while (true) {
+
+                const res = collapseAnd(acc) ?? collapseOr(acc)
+
+                if (res !== undefined) {
+                    modified = true
+                    acc = res
+                } else break
+            }
+
+            if (modified && exp.data) {
+                return {
+                    op: exp.op,
+                    data: () => exp.data().map(x => compactify(x))
+                }
             }
 
             if (exp.op === 'not' && exp.exp().op !== undefined) return collapseBraces(denot(exp))
@@ -336,10 +380,20 @@
             } 
         }
 
-        const evaluate = (exp, input) => { //todo: early stop reduction
+        const evaluate = (exp, input) => {
             if (!exp.op) return input[exp - 1]
-            if (exp.op === 'and') return exp.data().map(x => evaluate(x, input)).reduce((a, b) => a && b)
-            if (exp.op === 'or') return exp.data().map(x => evaluate(x, input)).reduce((a, b) => a || b)
+            if (exp.op === 'and') {
+                for (x of exp.data()) {
+                    if (evaluate(x, input) === false) return false
+                }
+                return true
+            }
+            if (exp.op === 'or') {
+                for (x of exp.data()) {
+                    if (evaluate(x, input) === true) return true
+                }
+                return false
+            }
             if (exp.op === 'not') return !(evaluate(exp.exp(), input))
         }
 
@@ -360,7 +414,7 @@
         const a = v(ctx)
         const b = v(ctx)
 
-        const expression = denot(and( or(not(a), not(b)), or(a, a)))
+        const expression = compactify(and( or(not(a), not(b)), or(a, a)))
 
         const look = p()
         look(show(expression))
