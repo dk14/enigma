@@ -24,21 +24,21 @@
         const and = (...arr) => {
             return {
                 op: 'and',
-                data: arr
+                data: () => arr
             }
         }
 
         const or = (...arr) => {
             return {
                 op: 'or',
-                data: arr
+                data:() => arr
             }
         }
 
         const not = (exp) => {
             return {
                 op: 'not',
-                exp: exp
+                exp: () => exp
             }
         }
 
@@ -115,18 +115,18 @@
 
         const denot = (exp) => { //todo: fix
             if (exp.op === 'not') {
-                if (exp.exp.op === 'or') {
+                if (exp.exp().op === 'or') {
                     return {
                         op: 'and',
-                        data: exp.exp.data.map(x => denot(not(x)))
+                        data: () => exp.exp().data().map(x => denot(not(x)))
                     }
-                } else if (exp.exp.op === 'and'){
+                } else if (exp.exp().op === 'and'){
                     return {
                         op: 'or',
-                        data: exp.exp.data.map(x => denot(not(x)))
+                        data: () => exp.exp().data().map(x => denot(not(x)))
                     }
-                } else if (exp.exp.op === 'not'){
-                    return denot(exp.exp.exp)
+                } else if (exp.exp().op === 'not'){
+                    return denot(exp.exp().exp())
                 } else {
                     return exp
                 }
@@ -134,7 +134,7 @@
                 if (exp.op) {
                     return {
                         op: exp.op,
-                        data: exp.data.map(x => denot(x))
+                        data: () => exp.data().map(x => denot(x))
                     }
                 } else {
                     return exp
@@ -143,24 +143,24 @@
             }
         }
 
-        const collapseBraces = (exp) => {
+        const collapseBraces = (exp) => { //todo: fix
             if (exp.op === 'or') {
-                exp.data = exp.data.map(x => {
+                exp.data = () => exp.data().map(x => {
                     if (x.op === 'or') {
-                        return x.data.map(x => collapseBraces(x))
+                        return x.data().map(x => collapseBraces(x))
                     } else return collapseBraces(x)
                 }).flat()
             }
                     
             if (exp.op === 'and') {
-                exp.data = exp.data.map(x => {
+                exp.data = () => exp.data().map(x => {
                     if (x.op === 'and') {
-                        return x.data.map(x => collapseBraces(x))
+                        return x.data().map(x => collapseBraces(x))
                     } else return collapseBraces(x)
                 }).flat()
             }
 
-            if (exp.op === 'not' && exp.exp.op !== undefined) return collapseBraces(denot(exp))
+            if (exp.op === 'not' && exp.exp().op !== undefined) return collapseBraces(denot(exp))
 
             return exp
 
@@ -200,31 +200,31 @@
             }
 
             if (exp.op === 'not') {
-                if (exp.exp.op) throw "needs denot!"
-                if (outerAndPositive.some(x => x === exp.exp)) return undefined
-                outerAndNegative.push(exp.exp)
+                if (exp.exp().op) throw "needs denot!"
+                if (outerAndPositive.some(x => x === exp.exp())) return undefined
+                outerAndNegative.push(exp.exp())
                 return exp
             }
 
             if (exp.op === 'and') {
                 //console.log("+++++")
 
-                const extra = exp.data.filter(x => isSomeVal(x))
-                const toSolve = exp.data.filter(x => !isSomeVal(x))
+                const extra = exp.data().filter(x => isSomeVal(x))
+                const toSolve = exp.data().filter(x => !isSomeVal(x))
 
                 extra.filter(x => isVal(x)).forEach(x => outerAndPositive.push(x))
                 extra.filter(x => isNotVal(x)).forEach(x => outerAndNegative.push(x))
 
                 const positions = toSolve.map(_ => 1)
 
-                const limits = toSolve.map(exp => exp.data.length)
+                const limits = toSolve.map(exp => exp.data().length)
 
                 const toStop = () => {
                     return positions.every((x, i) => x === limits[i])
                 }
 
                 const solveRest = () => {
-                    console.log("positions = " + positions)
+                    //console.log("positions = " + positions)
                     const tryOuterAndPositive = structuredClone(outerAndPositive)
                     const tryOuterAndNegative = structuredClone(outerAndNegative)
 
@@ -312,7 +312,7 @@
 
             if (exp.op === 'or'){
                 let count = 0
-                for (x of exp.data) {
+                for (x of exp.data()) {
                     const tryOuterAndPositive = structuredClone(outerAndPositive)
                     const tryOuterAndNegative = structuredClone(outerAndNegative)
 
@@ -324,31 +324,31 @@
                             tryOuterAndPositive.forEach(x => outerAndPositive.push(x))
                            tryOuterAndNegative.forEach(x => outerAndNegative.push(x))
 
-                            console.log("\n\n\n\n\n\nsolved = " + show(solved))
-                            console.log("outer negatives = " + outerAndNegative)
-                            console.log("outer positives = " + outerAndPositive)
+                            //console.log("\n\n\n\n\n\nsolved = " + show(solved))
+                            //console.log("outer negatives = " + outerAndNegative)
+                            //console.log("outer positives = " + outerAndPositive)
                             return solved
                         }
                     } else {
-                        console.log("\n\n\n\n\n\n not solved")
+                        //console.log("\n\n\n\n\n\n not solved")
                     }
                 }
             } 
         }
 
-        const evaluate = (exp, input) => {
+        const evaluate = (exp, input) => { //todo: early stop reduction
             if (!exp.op) return input[exp - 1]
-            if (exp.op === 'and') return exp.data.map(x => evaluate(x, input)).reduce((a, b) => a && b)
-            if (exp.op === 'or') return exp.data.map(x => evaluate(x, input)).reduce((a, b) => a || b)
-            if (exp.op === 'not') return !(evaluate(exp.exp, input))
+            if (exp.op === 'and') return exp.data().map(x => evaluate(x, input)).reduce((a, b) => a && b)
+            if (exp.op === 'or') return exp.data().map(x => evaluate(x, input)).reduce((a, b) => a || b)
+            if (exp.op === 'not') return !(evaluate(exp.exp(), input))
         }
 
         const show = (exp) => {
             if (!exp) return "not found"
             if (!exp.op)  return "$" + exp
-            if (exp.op === 'and') return `${exp.data.map(x => show(x)).join('')}`
-            if (exp.op === 'or') return `(${exp.data.map(x => show(x)).join(' + ')})`
-            if (exp.op === 'not') return ` -(${show(exp.exp)}) `
+            if (exp.op === 'and') return `${exp.data().map(x => show(x)).join('')}`
+            if (exp.op === 'or') return `(${exp.data().map(x => show(x)).join(' + ')})`
+            if (exp.op === 'not') return ` -(${show(exp.exp())}) `
         }
     </script>
  
@@ -360,7 +360,7 @@
         const a = v(ctx)
         const b = v(ctx)
 
-        const expression = collapseBraces(and( or(not(a), not(b)), or(a, a)))
+        const expression = denot(and( or(not(a), not(b)), or(a, a)))
 
         const look = p()
         look(show(expression))
@@ -372,10 +372,74 @@
         solveTest(show(solve(expression), 3))
 
         const arrExp = eqArrays(allocateArray(5, ctx), numberToArray(5, 5))
-        console.log(show(collapseBraces(denot(arrExp))))
-        solveTest(show(solve(collapseBraces(denot(arrExp)))))
+        console.log(show((denot(arrExp))))
+        solveTest(show(solve((denot(arrExp)))))
         
 
 
     </script>
+    <script>
+        const schedule = (w) => {
+            for (i= 0; i < 64; i++) {
+
+            }
+        }
+
+        const nonLinear = (x, y, z, a) => {
+            orArrays(orArrays(andArrays(xorArrays(x, y), z), shiftArray(x, a), andArrays(xorArrays(x, z), shiftArray(Y, b))), z) 
+        }
+
+        const round = (a, b, c, d, e, f, g, h, i) => {}
+    </script>
+    <body>
+
+         Scheduling Function (W[i])
+
+This function expands the 64-bit message block, W[i], into a larger set of 64-bit values, used in subsequent rounds.
+
+W[i] = W[i ⊕ i+1] ⊕ W[i ⊕ i+1 ⊕ (i+1)] (for i = 0 to 63)
+Where:
+
+⊕ denotes the bitwise XOR operation.
+i ⊕ i+1 represents the bitwise XOR of W[i] and W[i+1].
+The expression inside the brackets is calculated by XORing the result of i ⊕ i+1 with itself.
+2. Round Function (f(X, Y, Z))
+
+This is the core non-linear function used in each round. It’s defined as:
+
+f(X, Y, Z) = (X ⊕ Y ⊕ Z) * (X ⋘ a) + (X ⊕ Z) * (Y ⋘ b) + Z
+Where:
+
+⋘ denotes the left bitwise shift operation (shifting bits to the left by the specified number of positions, filling with zeros on the right).
+a = 17 (a constant)
+b = 18 (a constant)
+3. Compression Function (Main Loop)
+
+This function processes the message block (represented as a, b, c, d, e, f, g, h, i) in 64 rounds, updating these values.
+
+Initial Values (Round Constants):
+
+h0 = 0x6a09e667
+h1 = 0xbb67ae85
+h2 = 0x3c6ef372
+h3 = 0xa54ff53a
+Round Iteration (for round i = 0 to 63):
+
+Calculate T[i]:
+
+T[i] = h + sum(W[i] ⋘ s) + f(h, a, b)
+
+Where:
+
+s is the round-dependent shift value (s = i mod 64)
+sum(W[i] ⋘ s) is the sum of all the left-shifted W[i] values.
+f(h, a, b) is the round function, where h is the current hash value.
+h = h0, h1, h2, h3 depending on the round number.
+Update Hash Values:
+
+h0 = h1
+h1 = h2
+h2 = h3
+h3 = h0 + T[i]
+    </body>
 </html>
