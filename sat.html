@@ -447,53 +447,113 @@
     </script>
     <body>
 
-         Scheduling Function (W[i])
+  Algorithm SHA256(message)
 
-This function expands the 64-bit message block, W[i], into a larger set of 64-bit values, used in subsequent rounds.
+  // 1. Preprocessing: Padding and Append Length
+  //    - Pad the message with zeros until the length is congruent to 448 mod 512
+  //    - Append the length of the original message (in bits) as a 64-bit integer
+  //      to the padded message.
+  paddedMessage = PadMessage(message)
+  messageLengthBits = LengthOfMessage(message)
+  appendLength = ConvertBitsToBytes(messageLengthBits)
+  paddedMessageWithLength = AppendBytes(paddedMessage, appendLength)
 
-W[i] = W[i ⊕ i+1] ⊕ W[i ⊕ i+1 ⊕ (i+1)] (for i = 0 to 63)
-Where:
+  // 2. Initialize Hash Values
+  h0 = 0x6a09e667
+  h1 = 0xbb67ae85
+  h2 = 0x3c6ef372
+  h3 = 0xa54ff53a
+  h4 = 0x510e527f
 
-⊕ denotes the bitwise XOR operation.
-i ⊕ i+1 represents the bitwise XOR of W[i] and W[i+1].
-The expression inside the brackets is calculated by XORing the result of i ⊕ i+1 with itself.
-2. Round Function (f(X, Y, Z))
+  // 3. Process Message in 512-bit Blocks
+  for each block in BlockIterator(paddedMessageWithLength, 512):
+    // 3.1. Calculate Message Schedule
+    w[0..55] = ArrayOfBytes(block)  //  Convert block to an array of bytes
+    for i from 56 to 79:
+      w[i] = (w[i-1] ^ w[i-7] ^ w[i-15] ^ w[i-23] ^ w[i-31]) // Round constants
+    for i from 79 to 79+5:
+       w[i] = w[i-1] ^ w[i-5] ^ w[i-21] ^ w[i-29] ^ w[i-37] // Round constants
 
-This is the core non-linear function used in each round. It’s defined as:
+    // 3.2. Initial Hash Value Calculation
+    a = h0
+    b = h1
+    c = h2
+    d = h3
+    e = h4
 
-f(X, Y, Z) = (X ⊕ Y ⊕ Z) * (X ⋘ a) + (X ⊕ Z) * (Y ⋘ b) + Z
-Where:
+    // 3.3. Compression Function
+    for i from 0 to 63:
+      // Helper functions (defined below)
+      t1 = rotateLeft(a, 7)
+      t2 = rotateLeft(b, 18)
+      t3 = rotateLeft(c, 27)
+      t4 = rotateLeft(d, 36)
+      t5 = rotateLeft(e, 45)
 
-⋘ denotes the left bitwise shift operation (shifting bits to the left by the specified number of positions, filling with zeros on the right).
-a = 17 (a constant)
-b = 18 (a constant)
-3. Compression Function (Main Loop)
+      // Sigma 0
+      sigma0 = t1 + w[i] + Ch(a, b, c) + Ect(d, e)
 
-This function processes the message block (represented as a, b, c, d, e, f, g, h, i) in 64 rounds, updating these values.
+      // Sigma 1
+      sigma1 = t2 + w[i+1] + Ch(b, c, d) + Ect(e, a)
 
-Initial Values (Round Constants):
+      // Update hash values
+      a = d
+      b = c
+      c = sigma0
+      d = sigma1
+      e = w[i+56]
 
-h0 = 0x6a09e667
-h1 = 0xbb67ae85
-h2 = 0x3c6ef372
-h3 = 0xa54ff53a
-Round Iteration (for round i = 0 to 63):
+    // 3.4. Update Hash Values
+    h0 = h0 + a
+    h1 = h1 + b
+    h2 = h2 + c
+    h3 = h3 + d
+    h4 = h4 + e
 
-Calculate T[i]:
+  // 4. Output: Concatenate the Hash Values
+  return ConcatenateBytes(h0, h1, h2, h3, h4)
 
-T[i] = h + sum(W[i] ⋘ s) + f(h, a, b)
 
-Where:
+// Helper Functions (Implementation Details)
 
-s is the round-dependent shift value (s = i mod 64)
-sum(W[i] ⋘ s) is the sum of all the left-shifted W[i] values.
-f(h, a, b) is the round function, where h is the current hash value.
-h = h0, h1, h2, h3 depending on the round number.
-Update Hash Values:
+// RotateLeft(x, n): Rotate the byte array x to the left by n bits.
+//   Return a new byte array, the original array is unchanged.
 
-h0 = h1
-h1 = h2
-h2 = h3
-h3 = h0 + T[i]
+// Ch(x, y, z): Choice function.  Ch(x, y, z) = (x & y) ^ (~x & z)
+//   (x & y) performs a bitwise AND
+//   (~x & z) performs a bitwise AND of the complement of x and z
+
+// Ect(x, y):  Expand function.  Ect(x, y) = (x & y) ^ (x ^ y)
+//   (x & y) performs a bitwise AND
+//   (x ^ y) performs a bitwise XOR
+
+// PadMessage(message): Pads the message to be a multiple of 512 bits.
+//   - Converts the message to a byte array.
+//   - Appends a single zero byte.
+//   - Appends the length of the original message (in bits) as a 64-bit integer.
+//   - Returns the padded byte array.
+
+// BlockIterator(message, blockSize):  Iterates through the message in 512-bit blocks.
+//   - Splits the message into blocks of blockSize bytes.
+//   - Returns an iterator that yields each block.
+
+// LengthOfMessage(message): Returns the length of the message in bits.
+//   - Converts the message to a byte array.
+//   - Counts the number of bits in the byte array.
+//   - Returns the number of bits.
+
+// ConvertBitsToBytes(bits): Converts an integer representing the number of bits
+//   to a byte array.
+//   - Returns a byte array with the specified number of bytes, where each byte
+//     contains the most significant byte of the bits.
+
+// AppendBytes(message, bytes): Appends the given bytes to the end of the message.
+//   - Converts the message to a byte array.
+//   - Concatenates the message byte array with the given byte array.
+//   - Returns the combined byte array.
+
+// ConcatenateBytes(bytes1, bytes2, bytes3, bytes4, bytes5): Concatenates five byte arrays.
+//   - Returns a new byte array containing all the input bytes joined together.
+
     </body>
 </html>
