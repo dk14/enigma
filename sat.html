@@ -659,6 +659,400 @@ testHash()
 
     </script>
 
+    <body>
+        //WIP: DSL translation
+
+const v = (ctx) => {
+
+  if (!ctx.counter) ctx.counter = 0;
+
+  ctx.counter++;
+
+  return ctx.counter;
+
+};
+
+const and = (...arr) => ({ op: 'and', data: () => arr });
+
+const or = (...arr) => ({ op: 'or', data: () => arr });
+
+const not = (exp) => ({ op: 'not', exp: () => exp });
+
+
+
+const one = (templateVar = 1) => or(templateVar, not(templateVar));
+
+const zero = (templateVar = 1) => and(templateVar, not(templateVar));
+
+const xor = (a, b) => or(and(a, not(b)), and(not(a), b));
+
+
+
+const allocateArray = (n, ctx) => Array(n).fill(0).map(() => v(ctx));
+
+const appendArrays = (arr1, arr2) => [...arr1, ...arr2];
+
+const andArrays = (arr1, arr2) => arr1.map((x, i) => and(x, arr2[i]));
+
+const orArrays = (arr1, arr2) => arr1.map((x, i) => or(x, arr2[i]));
+
+const xorArrays = (arr1, arr2) => arr1.map((x, i) => xor(x, arr2[i]));
+
+const notArrays = (arr) => arr.map((x) => not(x));
+
+
+
+const numberToArray = (num, k, templateVar = 1) => {
+
+  return num.toString(2).padStart(k, '0').split('').map(
+
+    (x) => (x === '1' ? one(templateVar) : zero(templateVar))
+
+  );
+
+};
+
+
+
+// ---------- Fixed shift / rotate, your shiftArray had a bug ----------
+
+// arr is MSB first, length 32. shr fills with zero, rotr wraps.
+
+const shrArrays = (arr, k, templateVar = 1) => {
+
+  const z = zero(templateVar);
+
+  return [...Array(k).fill(z), ...arr.slice(0, 32 - k)];
+
+};
+
+const rotrArrays = (arr, k) => {
+
+  return [...arr.slice(32 - k), ...arr.slice(0, 32 - k)];
+
+};
+
+
+
+// ---------- Addition, 2-bit full adder ----------
+
+// a + b + carry_in = 0..3, needs 2 bits: [carry_out, sum]
+
+const addBit = (a, b, carry_in) => {
+
+  const aXorB = xor(a, b);
+
+  const sum = xor(aXorB, carry_in);
+
+  const carry_out = or(and(a, b), and(carry_in, aXorB));
+
+  return [carry_out, sum];
+
+};
+
+
+
+const addArrays = (arr1, arr2, templateVar = 1) => {
+
+  const out = new Array(32);
+
+  let carry = zero(templateVar);
+
+  for (let i = 31; i >= 0; i--) {
+
+    const [carry_out, sum] = addBit(arr1[i], arr2[i], carry);
+
+    out[i] = sum;
+
+    carry = carry_out;
+
+  }
+
+  return out; // mod 2^32, final carry dropped
+
+};
+
+
+
+const addManyArrays = (...arrs) => {
+
+  let acc = arrs[0];
+
+  for (let k = 1; k < arrs.length; k++) acc = addArrays(acc, arrs[k]);
+
+  return acc;
+
+};
+
+
+
+const Ch = (x, y, z) => {
+
+  // (x AND y) XOR ((NOT x) AND z)
+
+  return xorArrays(andArrays(x, y), andArrays(notArrays(x), z));
+
+};
+
+const Maj = (x, y, z) => {
+
+  return xorArrays(
+
+    xorArrays(andArrays(x, y), andArrays(x, z)),
+
+    andArrays(y, z)
+
+  );
+
+};
+
+const Sigma0 = (x) => xorArrays(
+
+  xorArrays(rotrArrays(x, 2), rotrArrays(x, 13)),
+
+  rotrArrays(x, 22)
+
+);
+
+const Sigma1 = (x) => xorArrays(
+
+  xorArrays(rotrArrays(x, 6), rotrArrays(x, 11)),
+
+  rotrArrays(x, 25)
+
+);
+
+const sigma0 = (x, templateVar = 1) => xorArrays(
+
+  xorArrays(rotrArrays(x, 7), rotrArrays(x, 18)),
+
+  shrArrays(x, 3, templateVar)
+
+);
+
+const sigma1 = (x, templateVar = 1) => xorArrays(
+
+  xorArrays(rotrArrays(x, 17), rotrArrays(x, 19)),
+
+  shrArrays(x, 10, templateVar)
+
+);
+
+
+
+
+
+const K_HEX = [
+
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
+
+  0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+
+  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
+
+  0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc,
+
+  0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+
+  0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
+
+  0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+
+  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3,
+
+  0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5,
+
+  0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+
+  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+
+  0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+
+];
+
+const H_HEX = [
+
+  0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+
+  0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+
+];
+
+
+
+
+
+
+
+// messageBits: Array<expr> length L, MSB first
+
+// returns Array<expr> length 256, MSB first
+
+const sha256DSLFromBits = (messageBits, ctx, templateVar = 1) => {
+
+  const L = messageBits.length;
+
+
+
+  // ---------- Padding ----------
+
+  // append 1, then k zeros, then L as 64-bit big-endian
+
+  const k = (448 - ((L + 1) % 512) + 512) % 512;
+
+  let padded = [...messageBits, one(templateVar)];
+
+  for (let i = 0; i < k; i++) padded.push(zero(templateVar));
+
+  padded = appendArrays(padded, numberToArray(L, 64, templateVar));
+
+
+
+  // ---------- Initial H ----------
+
+  let H = H_HEX.map((n) => numberToArray(n, 32, templateVar));
+
+  const K = K_HEX.map((n) => numberToArray(n, 32, templateVar));
+
+
+
+  // ---------- Process each 512-bit chunk ----------
+
+  const numChunks = padded.length / 512;
+
+  for (let c = 0; c < numChunks; c++) {
+
+    const chunk = padded.slice(c * 512, (c + 1) * 512);
+
+
+
+    // W[0..15]
+
+    const W = [];
+
+    for (let t = 0; t < 16; t++) W.push(chunk.slice(t * 32, t * 32 + 32));
+
+
+
+    // W[16..63]
+
+    for (let t = 16; t < 64; t++) {
+
+      W.push(addManyArrays(
+
+        sigma1(W[t - 2], templateVar),
+
+        W[t - 7],
+
+        sigma0(W[t - 15], templateVar),
+
+        W[t - 16]
+
+      ));
+
+    }
+
+
+
+    // Working vars
+
+    let a = H[0], b = H[1], c2 = H[2], d = H[3];
+
+    let e = H[4], f = H[5], g = H[6], h = H[7];
+
+
+
+    // 64 rounds
+
+    for (let t = 0; t < 64; t++) {
+
+      const T1 = addManyArrays(h, Sigma1(e), Ch(e, f, g), K[t], W[t]);
+
+      const T2 = addManyArrays(Sigma0(a), Maj(a, b, c2));
+
+
+
+      h = g;
+
+      g = f;
+
+      f = e;
+
+      e = addArrays(d, T1, templateVar);
+
+      d = c2;
+
+      c2 = b;
+
+      b = a;
+
+      a = addArrays(T1, T2, templateVar);
+
+    }
+
+
+
+    // H = H + working vars
+
+    H[0] = addArrays(H[0], a, templateVar);
+
+    H[1] = addArrays(H[1], b, templateVar);
+
+    H[2] = addArrays(H[2], c2, templateVar);
+
+    H[3] = addArrays(H[3], d, templateVar);
+
+    H[4] = addArrays(H[4], e, templateVar);
+
+    H[5] = addArrays(H[5], f, templateVar);
+
+    H[6] = addArrays(H[6], g, templateVar);
+
+    H[7] = addArrays(H[7], h, templateVar);
+
+  }
+
+
+
+  // ---------- Output: concat H ----------
+
+  return appendArrays(
+
+    appendArrays(appendArrays(appendArrays(H[0], H[1]), appendArrays(H[2], H[3])),
+
+    appendArrays(appendArrays(H[4], H[5]), appendArrays(H[6], H[7]))),
+
+    []
+
+  ).slice(0, 256);
+
+};
+
+
+
+// Takes only length, allocates unknown vars inside
+
+// Returns { messageVars, hash }
+
+const sha256DSL = (L, ctx, templateVar = 1) => {
+
+  const messageVars = allocateArray(L, ctx);
+
+  const hash = sha256DSLFromBits(messageVars, ctx, templateVar);
+
+  return { messageVars, hash };
+
+};
+    </body>
+
 
 
 
