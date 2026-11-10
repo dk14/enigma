@@ -660,7 +660,7 @@ testHash()
     </script>
 
     <body>
-        //WIP: DSL translation
+        //WIP: DSL translation. These ones come from AI already, not from me. Only solver comes from me.
 
 const v = (ctx) => {
 
@@ -1051,6 +1051,243 @@ const sha256DSL = (L, ctx, templateVar = 1) => {
   return { messageVars, hash };
 
 };
+
+
+
+
+BLOCK CREATION
+
+// ---------- helpers ----------
+function sha256d(buf) {
+  // minimal pure-JS placeholder, replace with your bit version if you want
+  // In Node: use crypto. In browser: use your sha256Bits.
+  // This function is only needed for txid / merkle root, which are public.
+  const crypto = require('crypto');
+  const h1 = crypto.createHash('sha256').update(buf).digest();
+  return crypto.createHash('sha256').update(h1).digest();
+}
+function reverseBuf(b) { return Buffer.from(b).reverse(); }
+function uint32LE(n) { const b = Buffer.alloc(4); b.writeUInt32LE(n >>> 0); return b; }
+function uint64LE(n) { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(n)); return b; }
+function varInt(n) {
+  if (n < 253) return Buffer.from([n]);
+  if (n <= 0xffff) { const b = Buffer.alloc(3); b[0] = 0xfd; b.writeUInt16LE(n, 1); return b; }
+  const b = Buffer.alloc(5); b[0] = 0xfe; b.writeUInt32LE(n, 1); return b;
+}
+
+// ---------- bech32 decode, for bc1q... ----------
+// returns { version, program: Buffer }
+function bech32Decode(addr) {
+  const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+  const lower = addr.toLowerCase();
+  const sep = lower.lastIndexOf('1');
+  const hrp = lower.slice(0, sep);
+  const dataPart = lower.slice(sep + 1);
+  const data = [];
+  for (const c of dataPart) {
+    const v = CHARSET.indexOf(c);
+    if (v === -1) throw new Error('bad bech32 char');
+    data.push(v);
+  }
+  // strip 6-char checksum
+  const payload = data.slice(0, -6);
+  const version = payload[0];
+  // convert 5-bit to 8-bit
+  const prog5 = payload.slice(1);
+  const prog = [];
+  let acc = 0, bits = 0;
+  for (const v of prog5) {
+    acc = (acc << 5) | v;
+    bits += 5;
+    while (bits >= 8) {
+      bits -= 8;
+      prog.push((acc >> bits) & 0xff);
+    }
+  }
+  return { hrp, version, program: Buffer.from(prog) };
+}
+
+function addressToScriptPubKey(addr) {
+  // Only P2WPKH / P2WSH / P2TR for now, bc1q / bc1p
+  const { version, program } = bech32Decode(addr);
+  if (version === 0 && program.length === 20) {
+    // P2WPKH: 0014 + 20 bytes
+    return Buffer.concat([Buffer.from('0014', 'hex'), program]);
+  }
+  if (version === 0 && program.length === 32) {
+    // P2WSH: 0020 + 32 bytes
+    return Buffer.concat([Buffer.from('0020', 'hex'), program]);
+  }
+  if (version === 1 && program.length === 32) {
+    // P2TR: 5120 + 32 bytes
+    return Buffer.concat([Buffer.from('5120', 'hex'), program]);
+  }
+  throw new Error('unsupported witness version/len: ' + version + ' ' + program.length);
+}
+
+// ---------- coinbase ----------
+function heightToScriptNum(height) {
+  // BIP34: minimal CScriptNum push
+  if (height === 0) return Buffer.from([0x00]); // OP_0, empty is also valid but 0x00 is clearer for test
+  if (height < 253) return Buffer.from([0x01, height]);
+  if (height <= 0xffff) return Buffer.concat([Buffer.from([0x02]), uint32LE(height).slice(0, 2)]);
+  if (height <= 0xffffff) return Buffer.concat([Buffer.from([0x03]), uint32LE(height).slice(0, 3)]);
+  return Buffer.concat([Buffer.from([0x04]), uint32LE(height)]);
+}
+
+function buildCoinbaseTx({ height, valueSats, payoutScript }) {
+  const coinbaseScript = heightToScriptNum(height);
+  // add a tiny extra nonce / tag so coinbase is unique, optional
+  // const coinbaseScript = Buffer.concat([heightToScriptNum(height), Buffer.from('garage', 'ascii')]);
+
+  const tx = Buffer.concat([
+    uint32LE(1), // version
+    varInt(1), // 1 input
+    Buffer.alloc(32, 0), // prev txid = 0
+    uint32LE(0xffffffff), // prev index
+    varInt(coinbaseScript.length),
+    coinbaseScript,
+    uint32LE(0xffffffff), // sequence
+    varInt(1), // 1 output
+    uint64LE(valueSats),
+    varInt(payoutScript.length),
+    payoutScript,
+    uint32LE(0), // locktime
+  ]);
+  return tx;
+}
+
+// ---------- empty block ----------
+function buildEmptyBlock(prevBlockHashHex, opts = {}) {
+  const {
+    address = 'bc1qekvmkczge3hxrvwdf2lj3yyvgjnparn3fdf9lg',
+    height = 0, // set real height if you test against real chain, BIP34
+    valueSats = 312500000, // 3.125 BTC, current subsidy. Change for other eras.
+    version = 0x20000000,
+    timestamp = Math.floor(Date.now() / 1000),
+    bits = 0x1d00ffff, // genesis difficulty, easiest. Valid structure, PoW will fail on purpose.
+    nonce = 0,
+  } = opts;
+
+  if (!/^[0-9a-fA-F]{64}$/.test(prevBlockHashHex)) {
+    throw new Error('prevBlockHashHex must be 64 hex chars, big-endian display order');
+  }
+
+  const payoutScript = addressToScriptPubKey(address);
+  const coinbase = buildCoinbaseTx({ height, valueSats, payoutScript });
+  const coinbaseTxidLE = sha256d(coinbase); // internal LE
+  const coinbaseTxid = reverseBuf(coinbaseTxidLE).toString('hex'); // display
+  const merkleRoot = coinbaseTxid; // only 1 tx, merkle = coinbase txid
+
+  const header = Buffer.concat([
+    uint32LE(version),
+    reverseBuf(Buffer.from(prevBlockHashHex, 'hex')), // display -> LE
+    reverseBuf(Buffer.from(merkleRoot, 'hex')), // display -> LE
+    uint32LE(timestamp),
+    uint32LE(bits),
+    uint32LE(nonce),
+  ]);
+
+  const block = Buffer.concat([
+    header,
+    varInt(1), // tx count = 1, only coinbase
+    coinbase,
+  ]);
+
+  return {
+    blockHex: block.toString('hex'),
+    headerHex: header.toString('hex'),
+    coinbaseHex: coinbase.toString('hex'),
+    coinbaseTxid,
+    merkleRoot,
+    txCount: 1,
+    header: { version, prevBlockHash: prevBlockHashHex, merkleRoot, timestamp, bits, nonce },
+  };
+}
+
+// ---------- bitarray helpers for your DSL ----------
+// bit = true = 1, false = 0, MSB first, same as your sha256Bits format
+function hexToBitArray(hex) {
+  const bits = [];
+  for (let i = 0; i < hex.length; i++) {
+    const n = parseInt(hex[i], 16);
+    for (let j = 3; j >= 0; j--) bits.push(((n >> j) & 1) === 1);
+  }
+  return bits;
+}
+function bitArrayToHex(bits) {
+  let hex = '';
+  for (let i = 0; i < bits.length; i += 4) {
+    let n = 0;
+    for (let j = 0; j < 4; j++) n = (n << 1) | (bits[i + j] ? 1 : 0);
+    hex += n.toString(16);
+  }
+  return hex;
+}
+function blockHexToBitArray(blockHex) {
+  return hexToBitArray(blockHex);
+}
+function blockBitArrayToHex(bits) {
+  return bitArrayToHex(bits);
+}
+
+
+
+
+
+
+
+
+BLOCK SUBMISSION
+
+
+// npm install bcoin
+const bcoin = require('bcoin');
+const { SPVNode } = bcoin;
+const { Block } = bcoin.primitives;
+
+async function startLightNode(network = 'testnet') {
+  const node = new SPVNode({
+    network, // 'testnet' -> 'main' to jump
+    prefix: `./spv-${network}`,
+    memory: false,
+    listen: false, // outbound only, good for cheap internet
+    maxOutbound: 8,
+    // SPV: only headers, no full chain
+  });
+
+  await node.open();
+  await node.connect();
+  console.log(`SPV connected to ${network}, peers:`, node.pool.peers.size());
+  console.log(`headers synced:`, node.chain.height);
+  return node;
+}
+
+async function submitBlock(node, blockHex) {
+  const block = Block.fromRaw(Buffer.from(blockHex, 'hex'));
+
+  // Local check using real bcoin validator, not my code
+  // SPVNode will check header + PoW against its header chain
+  console.log('block hash:', block.hash().toString('hex'));
+  console.log('nonce:', block.nonce);
+
+  // This is the real test: will the node's chain accept it?
+  // If PoW is invalid, it will be rejected here and NOT broadcast
+  node.pool.broadcastBlock(block);
+  console.log('broadcast attempted via SPV pool');
+  return block;
+}
+
+// const node = await startLightNode('testnet');
+// await submitBlock(node, 'your testnet block hex');
+
+
+
+
+
+
+
+        
     </body>
 
 
