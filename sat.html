@@ -62,6 +62,10 @@
             return Array(n).fill(0).map(x => v(ctx))
         }
 
+        const appendArrays = (arr1, arr2) => {
+            return [...arr1, ...arr2]
+        }
+
         const andArrays = (arr1, arr2) => {
             return arr1.map((x, i) => and(x, arr2[i]))
         }
@@ -433,127 +437,229 @@
 
     </script>
     <script>
-        const schedule = (w) => {
-            for (i= 0; i < 64; i++) {
+        // ---------- bit helpers ----------
+// bit = true = 1, false = 0, MSB first
 
-            }
-        }
+function hexToBits(hex) {
+     const bits = [];
+    for (const ch of hex) {
+        const n = parseInt(ch, 16);
+        for (let i = 3; i >= 0; i--) bits.push(((n >> i) & 1) === 1);
+    }
+    return bits;
+}
 
-        const nonLinear = (x, y, z, a) => {
-            orArrays(orArrays(andArrays(xorArrays(x, y), z), shiftArray(x, a), andArrays(xorArrays(x, z), shiftArray(Y, b))), z) 
-        }
+function bitsToHex(bits) {
+    let hex = '';
+    for (let i = 0; i < bits.length; i += 4) {
+    let n = 0;
+    for (let j = 0; j < 4; j++) n = (n << 1) | (bits[i + j] ? 1 : 0);
+    hex += n.toString(16);
+  }
+  return hex;
+}
 
-        const round = (a, b, c, d, e, f, g, h, i) => {}
+function cloneBits(b) { return b.slice(); }
+
+// ---------- 32-bit word ops, word = 32 booleans, MSB first ----------
+function xorBits(a, b) { return a.map((v, i) => v !== b[i]); }
+function andBits(a, b) { return a.map((v, i) => v && b[i]); }
+function notBits(a) { return a.map(v => !v); }
+
+function rotr(word, n) {
+    // rotate right by n
+    return word.slice(32 - n).concat(word.slice(0, 32 - n));
+}
+
+function shr(word, n) {
+    // shift right, fill with false
+    const out = new Array(32).fill(false);
+    for (let i = 0; i < 32 - n; i++) out[i + n] = word[i];
+    return out;
+}
+
+function addBits(...words) {
+    // add any number of 32-bit words, mod 2^32
+    let carry = 0;
+    const out = new Array(32).fill(false);
+    for (let i = 31; i >= 0; i--) {
+        let sum = carry;
+        for (const w of words) if (w[i]) sum++;
+        out[i] = (sum % 2) === 1;
+        carry = Math.floor(sum / 2);
+    }
+    return out;
+}
+
+// ---------- SHA-256 logical functions ----------
+function Ch(x, y, z) {
+     // (x AND y) XOR ((NOT x) AND z)
+    return xorBits(andBits(x, y), andBits(notBits(x), z));
+}
+function Maj(x, y, z) {
+    return xorBits(xorBits(andBits(x, y), andBits(x, z)), andBits(y, z));
+}
+function Sigma0(x) { return xorBits(xorBits(rotr(x, 2), rotr(x, 13)), rotr(x, 22)); }
+function Sigma1(x) { return xorBits(xorBits(rotr(x, 6), rotr(x, 11)), rotr(x, 25)); }
+function sigma0(x) { return xorBits(xorBits(rotr(x, 7), rotr(x, 18)), shr(x, 3)); }
+function sigma1(x) { return xorBits(xorBits(rotr(x, 17), rotr(x, 19)), shr(x, 10)); }
+
+// ---------- constants, as bits ----------
+const K_HEX = [
+ '428a2f98','71374491','b5c0fbcf','e9b5dba5','3956c25b','59f111f1','923f82a4','ab1c5ed5',
+ 'd807aa98','12835b01','243185be','550c7dc3','72be5d74','80deb1fe','9bdc06a7','c19bf174',
+ 'e49b69c1','efbe4786','0fc19dc6','240ca1cc','2de92c6f','4a7484aa','5cb0a9dc','76f988da',
+ '983e5152','a831c66d','b00327c8','bf597fc7','c6e00bf3','d5a79147','06ca6351','14292967',
+ '27b70a85','2e1b2138','4d2c6dfc','53380d13','650a7354','766a0abb','81c2c92e','92722c85',
+ 'a2bfe8a1','a81a664b','c24b8b70','c76c51a3','d192e819','d6990624','f40e3585','106aa070',
+ '19a4c116','1e376c08','2748774c','34b0bcb5','391c0cb3','4ed8aa4a','5b9cca4f','682e6ff3',
+ '748f82ee','78a5636f','84c87814','8cc70208','90befffa','a4506ceb','bef9a3f7','c67178f2'
+];
+const H0_HEX = ['6a09e667','bb67ae85','3c6ef372','a54ff53a','510e527f','9b05688c','1f83d9ab','5be0cd19'];
+const K = K_HEX.map(hexToBits);
+
+// ---------- helpers for length ----------
+function intToBits64(n) {
+  // n = bit length, < 2^53 for JS, output 64 bits MSB first
+  const bits = new Array(64).fill(false);
+  let val = n;
+  for (let i = 63; i >= 0; i--) {
+    bits[i] = (val % 2) === 1;
+    val = Math.floor(val / 2);
+  }
+  return bits;
+}
+
+// ---------- main SHA-256 ----------
+function sha256Bits(messageBits) {
+  // messageBits: Array<boolean>
+  const L = messageBits.length;
+
+  // 1. Padding: append 1, then k zeros, then 64-bit length
+  const padded = messageBits.slice();
+  padded.push(true);
+  // k = smallest >=0 such that (L + 1 + k) % 512 == 448
+  const k = (448 - ((L + 1) % 512) + 512) % 512;
+  for (let i = 0; i < k; i++) padded.push(false);
+  padded.push(...intToBits64(L));
+
+  // 2. Initial hash
+  let H = H0_HEX.map(hexToBits);
+
+  // 3. Process each 512-bit chunk
+  for (let chunkStart = 0; chunkStart < padded.length; chunkStart += 512) {
+    const chunk = padded.slice(chunkStart, chunkStart + 512);
+
+    // W[0..63], each 32 bits
+    const W = [];
+    for (let t = 0; t < 16; t++) {
+      W.push(chunk.slice(t * 32, t * 32 + 32));
+    }
+    for (let t = 16; t < 64; t++) {
+      W.push(addBits(sigma1(W[t - 2]), W[t - 7], sigma0(W[t - 15]), W[t - 16]));
+    }
+
+    let a = cloneBits(H[0]);
+    let b = cloneBits(H[1]);
+    let c = cloneBits(H[2]);
+    let d = cloneBits(H[3]);
+    let e = cloneBits(H[4]);
+    let f = cloneBits(H[5]);
+    let g = cloneBits(H[6]);
+    let h = cloneBits(H[7]);
+
+    for (let t = 0; t < 64; t++) {
+      const T1 = addBits(h, Sigma1(e), Ch(e, f, g), K[t], W[t]);
+      const T2 = addBits(Sigma0(a), Maj(a, b, c));
+      h = cloneBits(g);
+      g = cloneBits(f);
+      f = cloneBits(e);
+      e = addBits(d, T1);
+      d = cloneBits(c);
+      c = cloneBits(b);
+      b = cloneBits(a);
+      a = addBits(T1, T2);
+    }
+
+    H[0] = addBits(H[0], a);
+    H[1] = addBits(H[1], b);
+    H[2] = addBits(H[2], c);
+    H[3] = addBits(H[3], d);
+    H[4] = addBits(H[4], e);
+    H[5] = addBits(H[5], f);
+    H[6] = addBits(H[6], g);
+    H[7] = addBits(H[7], h);
+  }
+
+  // 4. Concatenate H
+  return [].concat(...H); // 256 booleans
+}
+
+function sha256dBits(messageBits) {
+  return sha256Bits(sha256Bits(messageBits));
+}
+
+// ---------- utils for your block code ----------
+function stringToBits(str) {
+  const bits = [];
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i);
+    for (let j = 7; j >= 0; j--) bits.push(((code >> j) & 1) === 1);
+  }
+  return bits;
+}
+function reverseBytesBits(bits) {
+  // reverse byte order, keep bits inside byte
+  const out = [];
+  for (let i = bits.length - 8; i >= 0; i -= 8) {
+    out.push(...bits.slice(i, i + 8));
+  }
+  return out;
+}
+
+// ---------- test ----------
+
+
+function arrayBufferToHexString(buffer) {
+  let hexString = '';
+  const array = new Uint8Array(buffer); // Convert to Uint8Array for easier access
+
+  for (let i = 0; i < array.length; i++) {
+    // Use hexadecimal representation of each byte
+    const hex = array[i].toString(16).padStart(2, '0'); // Pad with '0' if needed
+    hexString += hex;
+  }
+
+  return hexString;
+}
+
+const testHash = async () => {
+    const message = 'abc'
+    const emptyHash = sha256Bits([]);
+    console.log('sha256("") =', bitsToHex(emptyHash));
+    // e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+
+    const abcHash = sha256Bits(stringToBits('abc'));
+    console.log('sha256("abc") =', bitsToHex(abcHash));
+    // ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad
+
+    //const abcDouble = sha256dBits(stringToBits(message));
+    //console.log('sha256d("abc") =', bitsToHex(abcDouble));
+
+
+  const crypto = window.crypto || window.msCrypto; // Cross-browser compatibility
+  const hashData = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(message));
+
+  console.log(arrayBufferToHexString(hashData))
+
+}
+
+testHash()
+
+
     </script>
-    <body>
-
-  Algorithm SHA256(message)
-
-  // 1. Preprocessing: Padding and Append Length
-  //    - Pad the message with zeros until the length is congruent to 448 mod 512
-  //    - Append the length of the original message (in bits) as a 64-bit integer
-  //      to the padded message.
-  paddedMessage = PadMessage(message)
-  messageLengthBits = LengthOfMessage(message)
-  appendLength = ConvertBitsToBytes(messageLengthBits)
-  paddedMessageWithLength = AppendBytes(paddedMessage, appendLength)
-
-  // 2. Initialize Hash Values
-  h0 = 0x6a09e667
-  h1 = 0xbb67ae85
-  h2 = 0x3c6ef372
-  h3 = 0xa54ff53a
-  h4 = 0x510e527f
-
-  // 3. Process Message in 512-bit Blocks
-  for each block in BlockIterator(paddedMessageWithLength, 512):
-    // 3.1. Calculate Message Schedule
-    w[0..55] = ArrayOfBytes(block)  //  Convert block to an array of bytes
-    for i from 56 to 79:
-      w[i] = (w[i-1] ^ w[i-7] ^ w[i-15] ^ w[i-23] ^ w[i-31]) // Round constants
-    for i from 79 to 79+5:
-       w[i] = w[i-1] ^ w[i-5] ^ w[i-21] ^ w[i-29] ^ w[i-37] // Round constants
-
-    // 3.2. Initial Hash Value Calculation
-    a = h0
-    b = h1
-    c = h2
-    d = h3
-    e = h4
-
-    // 3.3. Compression Function
-    for i from 0 to 63:
-      // Helper functions (defined below)
-      t1 = rotateLeft(a, 7)
-      t2 = rotateLeft(b, 18)
-      t3 = rotateLeft(c, 27)
-      t4 = rotateLeft(d, 36)
-      t5 = rotateLeft(e, 45)
-
-      // Sigma 0
-      sigma0 = t1 + w[i] + Ch(a, b, c) + Ect(d, e)
-
-      // Sigma 1
-      sigma1 = t2 + w[i+1] + Ch(b, c, d) + Ect(e, a)
-
-      // Update hash values
-      a = d
-      b = c
-      c = sigma0
-      d = sigma1
-      e = w[i+56]
-
-    // 3.4. Update Hash Values
-    h0 = h0 + a
-    h1 = h1 + b
-    h2 = h2 + c
-    h3 = h3 + d
-    h4 = h4 + e
-
-  // 4. Output: Concatenate the Hash Values
-  return ConcatenateBytes(h0, h1, h2, h3, h4)
 
 
-// Helper Functions (Implementation Details)
 
-// RotateLeft(x, n): Rotate the byte array x to the left by n bits.
-//   Return a new byte array, the original array is unchanged.
 
-// Ch(x, y, z): Choice function.  Ch(x, y, z) = (x & y) ^ (~x & z)
-//   (x & y) performs a bitwise AND
-//   (~x & z) performs a bitwise AND of the complement of x and z
-
-// Ect(x, y):  Expand function.  Ect(x, y) = (x & y) ^ (x ^ y)
-//   (x & y) performs a bitwise AND
-//   (x ^ y) performs a bitwise XOR
-
-// PadMessage(message): Pads the message to be a multiple of 512 bits.
-//   - Converts the message to a byte array.
-//   - Appends a single zero byte.
-//   - Appends the length of the original message (in bits) as a 64-bit integer.
-//   - Returns the padded byte array.
-
-// BlockIterator(message, blockSize):  Iterates through the message in 512-bit blocks.
-//   - Splits the message into blocks of blockSize bytes.
-//   - Returns an iterator that yields each block.
-
-// LengthOfMessage(message): Returns the length of the message in bits.
-//   - Converts the message to a byte array.
-//   - Counts the number of bits in the byte array.
-//   - Returns the number of bits.
-
-// ConvertBitsToBytes(bits): Converts an integer representing the number of bits
-//   to a byte array.
-//   - Returns a byte array with the specified number of bytes, where each byte
-//     contains the most significant byte of the bits.
-
-// AppendBytes(message, bytes): Appends the given bytes to the end of the message.
-//   - Converts the message to a byte array.
-//   - Concatenates the message byte array with the given byte array.
-//   - Returns the combined byte array.
-
-// ConcatenateBytes(bytes1, bytes2, bytes3, bytes4, bytes5): Concatenates five byte arrays.
-//   - Returns a new byte array containing all the input bytes joined together.
-
-    </body>
 </html>
