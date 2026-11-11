@@ -241,8 +241,21 @@
             }
         }
 
+        window.ticks = 0
+
+        const limit = 8000
+
         //todo: fix leaf contradictions in extra
         const solve = (exp, outerAndPositive = [], outerAndNegative = [], k = 1) => {
+            window.ticks++
+
+            if (window.ticks > limit) {
+                console.log("\n\n\nk = " + k)
+                console.log("outer negatives = " + outerAndNegative)
+                console.log("outer positives = " + outerAndPositive)
+                
+                throw "too many contradictions, over " + limit
+            }
             //collapse every OR by selecting first expression that does not contain inversion from outer ands
             
             //console.log("[[[[" + JSON.stringify(show(exp)))
@@ -266,8 +279,8 @@
                 const extra = exp.data().filter(x => isSomeVal(x))
                 const toSolve = exp.data().filter(x => !isSomeVal(x))
 
-                extra.filter(x => isVal(x)).forEach(x => outerAndPositive.push(x))
-                extra.filter(x => isNotVal(x)).forEach(x => outerAndNegative.push(x.exp()))
+                extra.filter(x => isVal(x)).forEach(x => {if (!outerAndPositive.some(y => x === y)) outerAndPositive.push(x)})
+                extra.filter(x => isNotVal(x)).forEach(x => {if (!outerAndNegative.some(y => x.exp() === y)) outerAndNegative.push(x.exp())})
 
                 const positions = toSolve.map(_ => 1)
 
@@ -303,12 +316,12 @@
                                  //if (isVal(x) && negativeSet.has(x)) return undefined
                                 //if (isNotVal(x) && positiveSet.has(x.exp)) return undefined
 
-                                res.filter(x => isVal(x)).forEach(x => outerAndPositive.push(x))
-                                res.filter(x => isNotVal(x)).forEach(x => outerAndNegative.push(x.exp()))      
+                                res.filter(x => isVal(x)).forEach(x => {if (!outerAndPositive.some(y => x === y)) outerAndPositive.push(x)})
+                                res.filter(x => isNotVal(x)).forEach(x => {if (!outerAndNegative.some(y => x.exp() === y)) outerAndNegative.push(x.exp())})      
                                 
                                 
-                                
-                                result = [...result, ...res]
+                                const dedup = x => isVal(x) ? !positiveSet.has(x) : (isNotVal(x) ? !negativeSet.has(x.exp()): true)
+                                result = [...result.filter(dedup), ...res]
 
                             } else {
                                  
@@ -333,8 +346,8 @@
                         
                         i++
                     } 
-                    tryOuterAndPositive.forEach(x => outerAndPositive.push(x))
-                    tryOuterAndNegative.forEach(x => outerAndNegative.push(x))
+                    tryOuterAndPositive.forEach(x => {if (!outerAndPositive.some(y => x === y)) outerAndPositive.push(x)})
+                    tryOuterAndNegative.forEach(x => {if (!outerAndNegative.some(y => x === y)) outerAndNegative.push(x)})
 
                     return result 
 
@@ -377,8 +390,9 @@
                         count++
                         if (count === k) {
 
-                            tryOuterAndPositive.forEach(x => outerAndPositive.push(x))
-                           tryOuterAndNegative.forEach(x => outerAndNegative.push(x))
+                            tryOuterAndPositive.forEach(x => {if (!outerAndPositive.some(y => x === y)) outerAndPositive.push(x)})
+                            tryOuterAndNegative.forEach(x => {if (!outerAndNegative.some(y => x === y)) outerAndNegative.push(x)})
+
 
                             //console.log("\n\n\n\n\n\nsolved = " + show(solved))
                             //console.log("outer negatives = " + outerAndNegative)
@@ -386,7 +400,7 @@
                             return solved
                         }
                     } else {
-                        //console.log("\n\n\n\n\n\n not solved")
+                        if (window.ticks < 100) console.log("\n contradiction!!!!!")
                     }
                 }
             } 
@@ -969,7 +983,7 @@ const sha256DSL = (L, ctx, templateVar = 1) => {
 const ctx = {}
 
 console.log("solve sha256")
-//console.log(solve(denot(compactify(sha256DSL(32, ctx).hash[0]))))
+console.log(solve(denot(compactify(sha256DSL(1, ctx).hash[0]))))
 
 // todo: order. test on smaller amount of rounds.
 
