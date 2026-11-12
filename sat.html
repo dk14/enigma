@@ -243,7 +243,7 @@
 
         window.ticks = 0
 
-        const limit = 8000
+        const limit = 50000
 
         //todo: fix leaf contradictions in extra
         const solve = (exp, outerAndPositive = [], outerAndNegative = [], k = 1) => {
@@ -341,7 +341,7 @@
                             
 
                         } else {
-                            return undefined
+                            return i
                         }
                         
                         i++
@@ -357,19 +357,31 @@
 
                 let attempts = 0
 
+                const incrementAtPosition = (pos) => {
+                    let j = pos
+                    while (true) {
+                        positions[j]++
+                        if (positions[j] > limits[j]) {
+                            positions[j] = 1
+                            j++
+                        } else break
+                    }
+
+                }
+
                 while(!toStop()) {
                     attempts++
                     result = solveRest()
-                    if (!result) {
+                    if (!result.map) {
+                        const failedPosition = result
 
-                        let j = 0
-                        while (true) {
-                            positions[j]++
-                            if (positions[j] > limits[j]) {
-                                positions[j] = 1
-                                j++
-                            } else break
-                        }
+                        //console.log("failed = " + failedPosition)
+
+                        incrementAtPosition(failedPosition)
+
+                        //todo
+
+                        
                     } else {
                         return and(...[...extra, ...result])
                     }
