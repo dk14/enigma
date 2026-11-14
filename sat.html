@@ -173,7 +173,7 @@
                 if (exp.op === 'and') {
                     let modified = false
                     const res = exp.data().map(x => {
-                        if (x.op === 'or') {
+                        if (x.op === 'and') {
                             modified = true
                             return x.data()
                         } else return x
@@ -182,7 +182,7 @@
                     if (!modified) return undefined
 
                     return {
-                        op: 'or',
+                        op: 'and',
                         data: () => res
                     }
                 } else return undefined
@@ -208,7 +208,7 @@
                 }
             }
 
-            if (exp.op === 'not' && exp.exp().op !== undefined) return collapseBraces(denot(exp))
+            if (exp.op === 'not' && exp.exp().op !== undefined) return compactify(denot(exp))
 
             return exp
 
@@ -224,9 +224,9 @@
         }
         const isSomeVal = exp => isVal(exp) || isNotVal(exp)
 
-        const checkContradiction = (exp, outerAndPositive, outerAndNegative) => {
+        const checkContradiction = (exp, outerAndPositive, outerAndNegative, nesting) => {
             if (!(isSomeVal(exp))) {
-                return solve(exp, outerAndPositive, outerAndNegative)
+                return solve(exp, outerAndPositive, outerAndNegative, 1, nesting + 1)
             } else {
    
                 if (isNotVal(exp) && outerAndPositive.find(x => exp.exp !== undefined && exp.exp === x)) {
@@ -237,16 +237,16 @@
                     return undefined
                 }
 
-                return solve(exp, outerAndPositive, outerAndNegative)
+                return solve(exp, outerAndPositive, outerAndNegative, 1, nesting + 1)
             }
         }
 
         window.ticks = 0
 
-        const limit = 50000
+        const limit = 500000
 
         //todo: fix leaf contradictions in extra
-        const solve = (exp, outerAndPositive = [], outerAndNegative = [], k = 1) => {
+        const solve = (exp, outerAndPositive = [], outerAndNegative = [], k = 1, nesting = 0) => {
             window.ticks++
 
             if (window.ticks > limit) {
@@ -254,7 +254,7 @@
                 console.log("outer negatives = " + outerAndNegative)
                 console.log("outer positives = " + outerAndPositive)
                 
-                throw "too many contradictions, over " + limit
+                throw "too many contradictions, over " + limit + ", nesting = " + nesting
             }
             //collapse every OR by selecting first expression that does not contain inversion from outer ands
             
@@ -301,11 +301,9 @@
                     let i = 0
                     for(x of toSolve) {
                         
-                        const res = solve(x, tryOuterAndPositive, tryOuterAndNegative, positions[i])
+                        const res = solve(x, tryOuterAndPositive, tryOuterAndNegative, positions[i], nesting + 1)
 
                         if (res) {  
-  
-             
 
                             const negativeSet = new Set(outerAndNegative)
                             const positiveSet = new Set(outerAndPositive)
@@ -346,6 +344,7 @@
                         
                         i++
                     } 
+
                     tryOuterAndPositive.forEach(x => {if (!outerAndPositive.some(y => x === y)) outerAndPositive.push(x)})
                     tryOuterAndNegative.forEach(x => {if (!outerAndNegative.some(y => x === y)) outerAndNegative.push(x)})
 
@@ -363,7 +362,7 @@
                         positions[j]++
                         if (positions[j] > limits[j]) {
                             positions[j] = 1
-                            j++
+                            j--
                         } else break
                     }
 
@@ -372,10 +371,15 @@
                 while(!toStop()) {
                     attempts++
                     result = solveRest()
+
+                    if (nesting === 0) {
+                        //console.log(limits.map((x, i) => positions[i] / x).reduce((a, b) => a * b))
+                    }
+
                     if (!result.map) {
                         const failedPosition = result
 
-                        //console.log("failed = " + failedPosition)
+                       // console.log("failed = " + failedPosition)
 
                         incrementAtPosition(failedPosition)
 
@@ -397,7 +401,7 @@
                     const tryOuterAndPositive = structuredClone(outerAndPositive)
                     const tryOuterAndNegative = structuredClone(outerAndNegative)
 
-                    const solved = checkContradiction(x, tryOuterAndPositive, tryOuterAndNegative)
+                    const solved = checkContradiction(x, tryOuterAndPositive, tryOuterAndNegative, nesting)
                     if (solved) {
                         count++
                         if (count === k) {
