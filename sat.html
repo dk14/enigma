@@ -1253,7 +1253,6 @@ const formAst = () => {
 
         const hash = sha256DSL8FromBits(messageVars, ctx, templateVar, rounds)
 
-        console.log(hash)
 
         return { messageVars, hash }
 
@@ -1262,7 +1261,8 @@ const formAst = () => {
     console.log("solve sha256")
     console.log(solve(denot(compactify(sha256DSL8(1, ctx).hash[0]))))
 
-    // todo: order. test on smaller amount of rounds.
+    // todo: enumerate ast nodes to form a DAG,to avoid intermdiate blow up. Node-id become variable.
+    // we only open them after contradiction and var-dup passed. This willavoid intermediate blow-up in complexity
 
 }
 
