@@ -22,23 +22,32 @@
         }
 
         const and = (...arr) => {
+            if (!ctx.counter) ctx.counter = 0
+            ctx.counter++
             return {
                 op: 'and',
-                data: () => arr
+                data: () => arr,
+                id: ctx.counter
             }
         }
 
         const or = (...arr) => {
+            if (!ctx.counter) ctx.counter = 0
+            ctx.counter++
             return {
                 op: 'or',
-                data:() => arr
+                data:() => arr,
+                id: ctx.counter
             }
         }
 
         const not = (exp) => {
+            if (!ctx.counter) ctx.counter = 0
+            ctx.counter++
             return {
                 op: 'not',
-                exp: () => exp
+                exp: () => exp,
+                id: ctx.counter
             }
         }
 
@@ -245,7 +254,6 @@
 
         const limit = 5000000
 
-        //todo: fix leaf contradictions in extra
         const solve = (exp, outerAndPositive = [], outerAndNegative = [], k = 1, nesting = 0) => {
             window.ticks++
 
@@ -256,9 +264,6 @@
                 
                 throw "too many contradictions, over " + limit + ", nesting = " + nesting
             }
-            //collapse every OR by selecting first expression that does not contain inversion from outer ands
-            
-            //console.log("[[[[" + JSON.stringify(show(exp)))
 
             if (!exp.op) { 
                 if (outerAndNegative.some(x => x === exp)) return undefined
@@ -276,11 +281,14 @@
             if (exp.op === 'and') {
                 //console.log("+++++")
 
+                // TODO1: filter from extra AND toSolve by varnum and id, correspondingly
                 const extra = exp.data().filter(x => isSomeVal(x))
                 const toSolve = exp.data().filter(x => !isSomeVal(x))
 
                 extra.filter(x => isVal(x)).forEach(x => {if (!outerAndPositive.some(y => x === y)) outerAndPositive.push(x)})
                 extra.filter(x => isNotVal(x)).forEach(x => {if (!outerAndNegative.some(y => x.exp() === y)) outerAndNegative.push(x.exp())})
+
+                // TODO2: add ids from toSolve to outers
 
                 const positions = toSolve.map(_ => 1)
 
@@ -291,10 +299,7 @@
                 }
 
                 const solveRest = () => {
-                    //console.log("positions = " + positions)
                     const tryOuterAndPositive = structuredClone(outerAndPositive)
-
-                    //(outerAndNegative)
                     const tryOuterAndNegative = structuredClone(outerAndNegative)
 
                     let result = []
@@ -309,21 +314,23 @@
                             const positiveSet = new Set(outerAndPositive)
                             
                             if (res.filter) {
-                                //console.log("999999")
 
-                                 //if (isVal(x) && negativeSet.has(x)) return undefined
+                                //if (isVal(x) && negativeSet.has(x)) return undefined
                                 //if (isNotVal(x) && positiveSet.has(x.exp)) return undefined
 
                                 res.filter(x => isVal(x)).forEach(x => {if (!outerAndPositive.some(y => x === y)) outerAndPositive.push(x)})
                                 res.filter(x => isNotVal(x)).forEach(x => {if (!outerAndNegative.some(y => x.exp() === y)) outerAndNegative.push(x.exp())})      
+                                // TODO3 add ids from toSolve to outers
                                 
-                                
-                                const dedup = x => isVal(x) ? !positiveSet.has(x) : (isNotVal(x) ? !negativeSet.has(x.exp()): true)
+                                const dedup = x => isVal(x) ? !positiveSet.has(x) : (isNotVal(x) ? !negativeSet.has(x.exp()): true) 
+                                // TODO4 dedup expressions too
                                 result = [...result.filter(dedup), ...res]
 
                             } else {
                                  
-                                if (isVal(res) && negativeSet.has(res)) {
+                                if (isVal(res) && negativeSet.has(res)) { 
+                                    // TODO5 filter based on id/varnum too
+
                                     //console.log(";;;\n\n\n")
                                     //return undefined
                                 }
@@ -1262,7 +1269,7 @@ const formAst = () => {
     console.log(solve(denot(compactify(sha256DSL8(1, ctx).hash[0]))))
 
     // todo: enumerate ast nodes to form a DAG,to avoid intermdiate blow up. Node-id become variable.
-    // we only open them after contradiction and var-dup passed. This willavoid intermediate blow-up in complexity
+    // we only open them after contradiction and var-dup passed. This willavoid intermediate blow-up
 
 }
 
