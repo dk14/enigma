@@ -313,14 +313,14 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
             const finish = (r) => memoize(exp, snapPos, snapNeg, k, r)
     
             if (!exp.op) { 
-                if (outerAndNegative.some(x => x === exp)) return undefined
+                if (outerAndNegative.some(x => x === exp)) return finish(undefined)
                 outerAndPositive.push(exp)
                 return finish(exp)
             }
 
             if (exp.op === 'not') {
                 if (exp.exp().op) throw "needs denot!"
-                if (outerAndPositive.some(x => x === exp.exp())) return undefined
+                if (outerAndPositive.some(x => x === exp.exp())) return finish(undefined)
                 outerAndNegative.push(exp.exp())
                 return finish(exp)
             }
