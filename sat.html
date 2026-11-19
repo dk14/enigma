@@ -157,6 +157,25 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
   return result;
 };
 
+const replayResult = (res, pos, neg) => {
+    if (res === undefined) return
+    if (!res.op) {
+        if (!pos.includes(res)) pos.push(res)
+        return
+    }
+    if (res.op === 'not') {
+        const v = res.exp()
+        if (!neg.includes(v)) neg.push(v)
+        return
+    }
+    if (res.op === 'and') {
+        res.data().forEach(x => replayResult(x, pos, neg))
+        return
+    }
+    // or-node as a result: don't recurse, just mark the node itself
+    if (!pos.includes(res.id)) pos.push(res.id)
+}
+
         const denot = (exp) => { //todo: fix
             if (exp.op === 'not') {
                 if (exp.exp().op === 'or') {
@@ -308,7 +327,13 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
             const snapNeg = [...outerAndNegative]
             const mm = memoized(exp, snapPos, snapNeg, k)
 
-            if (mm.hit) return mm.value
+            if (mm.hit) {
+                if (mm.value !== undefined) {
+                    if (exp.op && !outerAndPositive.includes(exp.id)) outerAndPositive.push(exp.id)
+                    replayResult(mm.value, outerAndPositive, outerAndNegative)
+                }
+                return mm.value
+            }
             
             const finish = (r) => memoize(exp, snapPos, snapNeg, k, r)
     
