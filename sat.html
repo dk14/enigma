@@ -14,40 +14,41 @@
         }
     </script>
     <script>
-        
+        let globalCtx = undefined
         const v = (ctx) => {
             if (!ctx.counter) ctx.counter = 0
             ctx.counter++
+            globalCtx = ctx
             return ctx.counter
         }
 
         const and = (...arr) => {
-            if (!ctx.counter) ctx.counter = 0
-            ctx.counter++
+            if (!globalCtx.counter) globalCtx.counter = 0
+            globalCtx.counter++
             return {
                 op: 'and',
                 data: () => arr,
-                id: ctx.counter
+                id: globalCtx.counter
             }
         }
 
         const or = (...arr) => {
-            if (!ctx.counter) ctx.counter = 0
-            ctx.counter++
+            if (!globalCtx.counter) globalCtx.counter = 0
+            globalCtx.counter++
             return {
                 op: 'or',
                 data:() => arr,
-                id: ctx.counter
+                id: globalCtx.counter
             }
         }
 
         const not = (exp) => {
-            if (!ctx.counter) ctx.counter = 0
-            ctx.counter++
+            if (!globalCtx.counter) globalCtx.counter = 0
+            globalCtx.counter++
             return {
                 op: 'not',
                 exp: () => exp,
-                id: ctx.counter
+                id: globalCtx.counter
             }
         }
 
@@ -125,6 +126,36 @@
 
     </script>
     <script>
+
+const UNDEF = "__UNDEF__";
+
+const memoKey = (exp, outerAndPositive, outerAndNegative, k) => {
+  const id = exp.op ? exp.id : exp; // var num or node id
+  // sort copy so [1,2] == [2,1]
+  const pos = [...outerAndPositive].sort((a,b)=>a-b).join(',');
+  const neg = [...outerAndNegative].sort((a,b)=>a-b).join(',');
+  return id + '|' + pos + '|' + neg + '|' + k;
+};
+
+// at START of solve - return fast if hit
+// returns { hit: true, value } or { hit: false }
+const memoized = (exp, outerAndPositive, outerAndNegative, k) => {
+if (!globalCtx.memo) globalCtx.memo = {}
+const key = memoKey(exp, outerAndPositive, outerAndNegative, k);
+  if (key in globalCtx.memo) {
+    const stored = globalCtx.memo[key];
+    return { hit: true, value: stored === UNDEF ? undefined : stored };
+  }
+  return { hit: false };
+};
+
+// BEFORE returning result in solve
+const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
+  if (!globalCtx.memo) globalCtx.memo = {}
+  const key = memoKey(exp, outerAndPositive, outerAndNegative, k);
+  globalCtx.memo[key] = (result === undefined ? UNDEF : result);
+  return result;
+};
 
         const denot = (exp) => { //todo: fix
             if (exp.op === 'not') {
@@ -254,6 +285,7 @@
 
         const limit = 5000000
 
+        //todo: add memoize
         const solve = (exp, outerAndPositive = [], outerAndNegative = [], k = 1, nesting = 0) => {
             window.ticks++
 
