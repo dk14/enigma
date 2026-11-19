@@ -162,11 +162,14 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
                 if (exp.exp().op === 'or') {
                     return {
                         op: 'and',
+                        id: exp.exp().id,
                         data: () => exp.exp().data().map(x => denot(not(x)))
                     }
                 } else if (exp.exp().op === 'and'){
+                    
                     return {
                         op: 'or',
+                        id: exp.exp().id,
                         data: () => exp.exp().data().map(x => denot(not(x)))
                     }
                 } else if (exp.exp().op === 'not'){
@@ -177,6 +180,7 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
             } else {
                 if (exp.op) {
                     return {
+                        id: exp.id,
                         op: exp.op,
                         data: () => exp.data().map(x => denot(x))
                     }
@@ -203,6 +207,7 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
                     if (!modified) return undefined
 
                     return {
+                        id: exp.id,
                         op: 'or',
                         data: () => res
                     }
@@ -220,8 +225,9 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
                     }).flat()
 
                     if (!modified) return undefined
-
+                    
                     return {
+                        id: exp.id,
                         op: 'and',
                         data: () => res
                     }
@@ -243,8 +249,9 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
 
             if (modified && exp.data) {
                 return {
+                    id: exp.id,
                     op: exp.op,
-                    data: () => exp.data().map(x => compactify(x))
+                    data: () => acc.data().map(x => compactify(x))
                 }
             }
 
@@ -1298,7 +1305,7 @@ const formAst = () => {
     }
 
     console.log("solve sha256")
-    console.log(solve(denot(compactify(sha256DSL8(1, ctx).hash[0]))))
+    //console.log(solve(denot(compactify(sha256DSL8(1, ctx).hash[0]))))
 
     // todo: enumerate ast nodes to form a DAG,to avoid intermdiate blow up. Node-id become variable.
     // we only open them after contradiction and var-dup passed. This willavoid intermediate blow-up
