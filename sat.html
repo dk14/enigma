@@ -303,18 +303,26 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
                 
                 throw "too many contradictions, over " + limit + ", nesting = " + nesting
             }
+            
+            const snapPos = [...outerAndPositive]
+            const snapNeg = [...outerAndNegative]
+            const mm = memoized(exp, snapPos, snapNeg, k)
 
+            if (mm.hit) return mm.value
+            
+            const finish = (r) => memoize(exp, snapPos, snapNeg, k, r)
+    
             if (!exp.op) { 
                 if (outerAndNegative.some(x => x === exp)) return undefined
                 outerAndPositive.push(exp)
-                return exp
+                return finish(exp)
             }
 
             if (exp.op === 'not') {
                 if (exp.exp().op) throw "needs denot!"
                 if (outerAndPositive.some(x => x === exp.exp())) return undefined
                 outerAndNegative.push(exp.exp())
-                return exp
+                return finish(exp)
             }
 
             if (exp.op === 'and') {
@@ -433,12 +441,12 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
 
                         
                     } else {
-                        return and(...[...extra, ...result])
+                        return finish(and(...[...extra, ...result]))
                     }
 
                 } 
 
-                return undefined    
+                return finish(undefined)    
             }
 
             if (exp.op === 'or'){
@@ -459,12 +467,14 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
                             //console.log("\n\n\n\n\n\nsolved = " + show(solved))
                             //console.log("outer negatives = " + outerAndNegative)
                             //console.log("outer positives = " + outerAndPositive)
-                            return solved
+                            return finish(solved)
                         }
                     } else {
                         if (window.ticks < 100) console.log("\n contradiction!!!!!")
                     }
                 }
+                
+                return finish(undefined)
             } 
         }
 
