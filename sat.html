@@ -466,7 +466,7 @@
                             if (res.filter) {
 
                                 for (x of res) {
-                                    if (contradicts(x, tryOuterAndPositive, tryOuterAndNegative)) return finish(undefined)
+                                    if (contradicts(x, tryOuterAndPositive, tryOuterAndNegative)) return i
                                     if (isGenVal(x)) addPos(tryOuterAndPositive, x) 
                                     else if (isGenNotVal(x)) addNeg(tryOuterAndNegative, x)
                                 }
