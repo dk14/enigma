@@ -142,6 +142,8 @@
         const key = memoKey(exp, outerAndPositive, outerAndNegative, k);
         if (key in globalCtx.memo) {
             const stored = globalCtx.memo[key];
+            if (!globalCtx.hits) globalCtx.hits = 0
+            globalCtx.hits++
             return { hit: true, value: stored === UNDEF ? undefined : stored };
         }
         return { hit: false };
@@ -382,7 +384,7 @@
 
         window.ticks = 0
 
-        const limit = 10000
+        const limit = 100000
 
         const solve = (exp, outerAndPositive = [], outerAndNegative = [], k = 1, nesting = 0) => {
             window.ticks++
@@ -392,7 +394,7 @@
                 console.log("outer negatives = " + outerAndNegative)
                 console.log("outer positives = " + outerAndPositive)
                 
-                throw "too many contradictions, over " + limit + ", nesting = " + nesting
+                throw "too many contradictions, over " + limit + ", nesting = " + nesting + ", memo length = " + Object.keys(globalCtx.memo).length + " hits = " + globalCtx.hits
             }
             
             const snapPos = [...outerAndPositive]
@@ -456,12 +458,12 @@
 
                         if (res) {  
 
-                            const negativeSet = new Set(outerAndNegative)
-                            const positiveSet = new Set(outerAndPositive)
+                            const negativeSet = new Set(tryOuterAndNegative)
+                            const positiveSet = new Set(tryOuterAndPositive)
                             
                             if (res.filter) {
 
-                                for (x of res){
+                                for (x of res) {
                                     if (contradicts(x, outerAndPositive, outerAndNegative)) return finish(undefined)
                                     if (isGenVal(x)) addPos(outerAndPositive, x) 
                                     else if (isGenNotVal(x)) addNeg(outerAndNegative, x)
