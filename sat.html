@@ -179,20 +179,31 @@ const replayResult = (res, pos, neg) => {
         const denot = (exp) => { //todo: fix
             if (exp.op === 'not') {
                 if (exp.exp().op === 'or') {
+                    // in denot, not-branch:
                     return {
-                        negative: true,
-                        op: 'and',
-                        id: exp.exp().id,
-                        data: () => exp.exp().data().map(x => denot(not(x)))
+                      negative: true,
+                      op: 'and', // 
+                      id: exp.exp().id,
+                      // Y = NOT(X). Y false => X true => X.impliedPos holds
+                      // Y true  => X false => X.impliedNeg holds
+                      impliedNeg: exp.exp().impliedPos ?? [],
+                      impliedPos: exp.exp().impliedNeg ?? [],
+                      data: () => exp.exp().data().map(x => denot(not(x)))
                     }
                 } else if (exp.exp().op === 'and'){
                     
+                    
                     return {
-                        negative: true,
-                        op: 'or',
-                        id: exp.exp().id,
-                        data: () => exp.exp().data().map(x => denot(not(x)))
+                      negative: true,
+                      op: 'or', 
+                      id: exp.exp().id,
+                      // Y = NOT(X). Y false => X true => X.impliedPos holds
+                      // Y true  => X false => X.impliedNeg holds
+                      impliedNeg: exp.exp().impliedPos ?? [],
+                      impliedPos: exp.exp().impliedNeg ?? [],
+                      data: () => exp.exp().data().map(x => denot(not(x)))
                     }
+                    
                 } else if (exp.exp().op === 'not'){
                     return denot(exp.exp().exp())
                 } else {
@@ -201,11 +212,13 @@ const replayResult = (res, pos, neg) => {
             } else {
                 if (exp.op) {
                     return {
-                        negative: false,
-                        id: exp.id,
-                        op: exp.op,
-                        data: () => exp.data().map(x => denot(x))
+                      negative: false,
+                      impliedPos: exp.impliedPos ?? [],
+                      impliedNeg: exp.impliedNeg ?? [],
+                      id: exp.id, op: exp.op,
+                      data: () => exp.data().map(x => denot(x))
                     }
+                                
                 } else {
                     return exp
                 }
