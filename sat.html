@@ -358,7 +358,10 @@
         // contradiction test, using id not object identity:
         const contradicts = (exp, pos, neg) => (isGenNotVal(exp) && pos.includes(getid(exp))) || (isGenVal(exp) && neg.includes(getid(exp)))
 
-
+        const checkContradictionGen = (exp, pos, neg, nesting) => {
+          if (contradicts(exp, pos, neg)) return undefined
+          return solve(exp, pos, neg, 1, nesting + 1)
+        }
 
         const checkContradiction = (exp, outerAndPositive, outerAndNegative, nesting) => {
             if (!(isSomeVal(exp))) {
@@ -420,22 +423,15 @@
             }
 
             if (exp.op === 'and') {
-                //console.log("+++++")
 
-                // TODO1: filter from extra AND toSolve by varnum and id, correspondingly
                 const extra = exp.data().filter(x => isSomeVal(x))
                 const toSolve = exp.data().filter(x => !isSomeVal(x))
 
-                extra.filter(x => isVal(x)).forEach(x => {if (!outerAndPositive.some(y => x === y)) outerAndPositive.push(x)})
-                extra.filter(x => isNotVal(x)).forEach(x => {if (!outerAndNegative.some(y => x.exp() === y)) outerAndNegative.push(x.exp())})
-
-                // TODO2: add ids from toSolve to outers
-
-                exp.data().forEach(x => {
+                for (x of exp.data()){
                   if (contradicts(x, outerAndPositive, outerAndNegative)) return finish(undefined)
                   if (isGenVal(x)) addPos(outerAndPositive, x)
                   else addNeg(outerAndNegative, x)
-                })
+                }
 
                 const positions = toSolve.map(_ => 1)
 
@@ -451,7 +447,7 @@
 
                     let result = []
                     let i = 0
-                    for(x of toSolve) {
+                    for (x of toSolve) {
                         
                         const res = solve(x, tryOuterAndPositive, tryOuterAndNegative, positions[i], nesting + 1)
 
@@ -462,35 +458,28 @@
                             
                             if (res.filter) {
 
-                                //if (isVal(x) && negativeSet.has(x)) return undefined
-                                //if (isNotVal(x) && positiveSet.has(x.exp)) return undefined
+                                for (x of res){
+                                    if (contradicts(x, outerAndPositive, outerAndNegative)) return finish(undefined)
+                                    if (isGenVal(x)) addPos(outerAndPositive, x) 
+                                    else if (isGenNotVal(x)) addNeg(outerAndNegative, x)
+                                }
 
-                                res.filter(x => isVal(x)).forEach(x => {if (!outerAndPositive.some(y => x === y)) outerAndPositive.push(x)})
-                                res.filter(x => isNotVal(x)).forEach(x => {if (!outerAndNegative.some(y => x.exp() === y)) outerAndNegative.push(x.exp())})      
-                                // TODO3 add ids from toSolve to outers
-                                
-                                const dedup = x => isVal(x) ? !positiveSet.has(x) : (isNotVal(x) ? !negativeSet.has(x.exp()): true) 
-                                // TODO4 dedup expressions too
+                                const dedup = x => {
+                                  const id = getid(x)
+                                  return isGenVal(x) ? !positiveSet.has(id) : !negativeSet.has(id)
+                                }
+  
                                 result = [...result.filter(dedup), ...res]
 
                             } else {
                                  
-                                if (isVal(res) && negativeSet.has(res)) { 
-                                    // TODO5 filter based on id/varnum too
-
-                                    //console.log(";;;\n\n\n")
-                                    //return undefined
-                                }
-                                //if (isNotVal(res) && positiveSet.has(res.exp)) return undefined
+                                //if (isGenVal(res)) addPos(outerAndPositive, res) 
+                                //else if (isGenNotVal(res)) addNeg(outerAndNegative, res)
                                 
                                 
                                 result = [...result, res]
                                 
-                            }
-
-                            //console.log(outerAndPositive)
-                           
-                            
+                            }                            
 
                         } else {
                             return i
@@ -526,20 +515,9 @@
                     attempts++
                     result = solveRest()
 
-                    if (nesting === 0) {
-                        //console.log(limits.map((x, i) => positions[i] / x).reduce((a, b) => a * b))
-                    }
-
                     if (!result.map) {
                         const failedPosition = result
-
-                       // console.log("failed = " + failedPosition)
-
                         incrementAtPosition(failedPosition)
-
-                        //todo
-
-                        
                     } else {
                         return finish(and(...[...extra, ...result]))
                     }
@@ -556,6 +534,7 @@
                     const tryOuterAndNegative = structuredClone(outerAndNegative)
 
                     const solved = checkContradiction(x, tryOuterAndPositive, tryOuterAndNegative, nesting)
+                    //const solved = checkContradictionGen(x, tryOuterAndPositive, tryOuterAndNegative, nesting)
                     if (solved) {
                         count++
                         if (count === k) {
@@ -563,10 +542,6 @@
                             tryOuterAndPositive.forEach(x => {if (!outerAndPositive.some(y => x === y)) outerAndPositive.push(x)})
                             tryOuterAndNegative.forEach(x => {if (!outerAndNegative.some(y => x === y)) outerAndNegative.push(x)})
 
-
-                            //console.log("\n\n\n\n\n\nsolved = " + show(solved))
-                            //console.log("outer negatives = " + outerAndNegative)
-                            //console.log("outer positives = " + outerAndPositive)
                             return finish(solved)
                         }
                     } else {
