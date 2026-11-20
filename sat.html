@@ -180,6 +180,7 @@ const replayResult = (res, pos, neg) => {
             if (exp.op === 'not') {
                 if (exp.exp().op === 'or') {
                     return {
+                        negative: true,
                         op: 'and',
                         id: exp.exp().id,
                         data: () => exp.exp().data().map(x => denot(not(x)))
@@ -187,6 +188,7 @@ const replayResult = (res, pos, neg) => {
                 } else if (exp.exp().op === 'and'){
                     
                     return {
+                        negative: true,
                         op: 'or',
                         id: exp.exp().id,
                         data: () => exp.exp().data().map(x => denot(not(x)))
@@ -199,6 +201,7 @@ const replayResult = (res, pos, neg) => {
             } else {
                 if (exp.op) {
                     return {
+                        negative: false,
                         id: exp.id,
                         op: exp.op,
                         data: () => exp.data().map(x => denot(x))
@@ -279,8 +282,6 @@ const replayResult = (res, pos, neg) => {
             return exp
 
         }
-        
-        //todo, add "negative" flag before applying demorgan, otherwise contradictions don't arise
 
         const isVal = exp => !exp.op
         const isNotVal = exp => {
@@ -290,7 +291,14 @@ const replayResult = (res, pos, neg) => {
             }
             return false
         }
+        
         const isSomeVal = exp => isVal(exp) || isNotVal(exp)
+
+        const getid = exp => isSomeVal(exp) ? (isVal(exp) ? exp : exp.exp()) : exp.id
+        
+        const isGenVal = exp => isVal(exp) || !exp.negative
+        
+        const isGenNotVal = exp => isNotVal(exp) || exp.negative
 
         const checkContradiction = (exp, outerAndPositive, outerAndNegative, nesting) => {
             if (!(isSomeVal(exp))) {
@@ -339,7 +347,7 @@ const replayResult = (res, pos, neg) => {
             
             const finish = (r) => memoize(exp, snapPos, snapNeg, k, r)
     
-            if (!exp.op) { 
+            if (!isSomeVal(exp)) { 
                 if (outerAndNegative.some(x => x === exp)) return finish(undefined)
                 outerAndPositive.push(exp)
                 return finish(exp)
