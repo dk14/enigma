@@ -337,7 +337,7 @@
 
         const getid = exp => isSomeVal(exp) ? (isVal(exp) ? exp : exp.exp()) : exp.id
         
-        const isGenVal = exp => isVal(exp) || (!isSomeVal(x) && !exp.negative)
+        const isGenVal = exp => isVal(exp) || (!isSomeVal(exp) && !exp.negative)
         
         const isGenNotVal = exp => isNotVal(exp) || (!isSomeVal(x) && exp.negative)
 
