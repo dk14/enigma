@@ -466,9 +466,9 @@
                             if (res.filter) {
 
                                 for (x of res) {
-                                    if (contradicts(x, outerAndPositive, outerAndNegative)) return finish(undefined)
-                                    if (isGenVal(x)) addPos(outerAndPositive, x) 
-                                    else if (isGenNotVal(x)) addNeg(outerAndNegative, x)
+                                    if (contradicts(x, tryOuterAndPositive, tryOuterAndNegative)) return finish(undefined)
+                                    if (isGenVal(x)) addPos(tryOuterAndPositive, x) 
+                                    else if (isGenNotVal(x)) addNeg(tryOuterAndNegative, x)
                                 }
 
                                 const dedup = x => {
@@ -518,11 +518,12 @@
 
                 }
 
-                while(!toStop()) {
+                while(true) {
                     attempts++
                     result = solveRest()
 
                     if (!result.map) {
+                        if (toStop()) break;
                         const failedPosition = result
                         incrementAtPosition(failedPosition)
                     } else {
