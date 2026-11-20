@@ -200,7 +200,7 @@
                       id: exp.exp().id,
                       impliedNeg: exp.exp().impliedPos ?? [],
                       impliedPos: exp.exp().impliedNeg ?? [],
-                      data: () => exp.exp().data().map(x => denot(not(x)))
+                      data: () => exp.exp().data().map(x => denot(syntheticNot(x)))
                     }
                 } else if (exp.exp().op === 'and'){
    
