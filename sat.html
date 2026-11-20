@@ -339,7 +339,7 @@
         
         const isGenVal = exp => isVal(exp) || (!isSomeVal(exp) && !exp.negative)
         
-        const isGenNotVal = exp => isNotVal(exp) || (!isSomeVal(x) && exp.negative)
+        const isGenNotVal = exp => isNotVal(exp) || (!isSomeVal(exp) && exp.negative)
 
         const addPos = (arr, exp) => {
             const id = getid(exp)
