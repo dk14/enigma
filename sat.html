@@ -335,9 +335,9 @@
 
         const getid = exp => isSomeVal(exp) ? (isVal(exp) ? exp : exp.exp()) : exp.id
         
-        const isGenVal = exp => isVal(exp) || !exp.negative
+        const isGenVal = exp => isVal(exp) || (!isSomeVal(x) && !exp.negative)
         
-        const isGenNotVal = exp => isNotVal(exp) || exp.negative
+        const isGenNotVal = exp => isNotVal(exp) || (!isSomeVal(x) && exp.negative)
 
         const addPos = (arr, exp) => {
             const id = getid(exp)
@@ -536,8 +536,8 @@
                     const tryOuterAndPositive = structuredClone(outerAndPositive)
                     const tryOuterAndNegative = structuredClone(outerAndNegative)
 
-                    const solved = checkContradiction(x, tryOuterAndPositive, tryOuterAndNegative, nesting)
-                    //const solved = checkContradictionGen(x, tryOuterAndPositive, tryOuterAndNegative, nesting)
+                    //const solved = checkContradiction(x, tryOuterAndPositive, tryOuterAndNegative, nesting)
+                    const solved = checkContradictionGen(x, tryOuterAndPositive, tryOuterAndNegative, nesting)
                     if (solved) {
                         count++
                         if (count === k) {
