@@ -198,8 +198,8 @@
                       negative: true,
                       op: 'and', // 
                       id: exp.exp().id,
-                      impliedNeg: exp.exp().impliedPos ?? [],
-                      impliedPos: exp.exp().impliedNeg ?? [],
+                      impliedNeg: exp.exp().impliedPos,
+                      impliedPos: exp.exp().impliedNeg,
                       data: () => exp.exp().data().map(x => denot(syntheticNot(x)))
                     }
                 } else if (exp.exp().op === 'and'){
@@ -208,8 +208,8 @@
                       negative: true,
                       op: 'or', 
                       id: exp.exp().id,
-                      impliedNeg: exp.exp().impliedPos ?? [],
-                      impliedPos: exp.exp().impliedNeg ?? [],
+                      impliedNeg: exp.exp().impliedPos,
+                      impliedPos: exp.exp().impliedNeg,
                       data: () => exp.exp().data().map(x => denot(syntheticNot(x)))
                     }
                     
@@ -222,8 +222,8 @@
                 if (exp.op) {
                     return {
                       negative: false,
-                      impliedPos: exp.impliedPos ?? [],
-                      impliedNeg: exp.impliedNeg ?? [],
+                      impliedPos: exp.impliedPos,
+                      impliedNeg: exp.impliedNeg,
                       id: exp.id, op: exp.op,
                       data: () => exp.data().map(x => denot(x))
                     }
