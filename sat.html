@@ -215,76 +215,118 @@ const replayResult = (res, pos, neg) => {
         
 
         const compactify = (exp) => {
+  // no flattening for a negative node:
+  // NOT(and(...)) is not an and, NOT(or(...)) is not an or
+  // flattening it would change semantics
+  const canFlatten = !exp.negative
 
-            const collapseOr = (exp) => {
-                if (exp.op === 'or') {
-                    let modified = false
-                    const res = exp.data().map(x => {
-                        if (x.op === 'or') {
-                             modified = true
-                            return x.data()
-                        } else return x
-                    }).flat()
+  const collapseOr = (exp) => {
+    if (exp.op !== 'or' || !canFlatten) return undefined
 
-                    if (!modified) return undefined
+    let modified = false
+    const impliedNeg = [...(exp.impliedNeg ?? [])]
+    const impliedPos = [...(exp.impliedPos ?? [])]
 
-                    return {
-                        negative: exp.negative,
-                        id: exp.id,
-                        op: 'or',
-                        data: () => res
-                    }
-                } else return undefined
-            }
+    const res = exp.data().map(x => {
+      // only flatten a positive or-child
+      // or(or(B,C)) -> or(B,C): outer false => inner false
+      if (x.op === 'or' && !x.negative) {
+        modified = true
+        // inner id must be false if outer is false
+        impliedNeg.push(x.id)
+        // and anything that was false-if-inner-false
+        // is also false-if-outer-false
+        impliedNeg.push(...(x.impliedNeg ?? []))
+        // x.impliedPos is NOT merged:
+        // outer true does not imply inner true
+        return x.data()
+      }
+      return x
+    }).flat()
 
-            const collapseAnd = (exp) => {
-                if (exp.op === 'and') {
-                    let modified = false
-                    const res = exp.data().map(x => {
-                        if (x.op === 'and') {
-                            modified = true
-                            return x.data()
-                        } else return x
-                    }).flat()
+    if (!modified) return undefined
 
-                    if (!modified) return undefined
-                    
-                    return {
-                        negative: exp.negative,
-                        id: exp.id,
-                        op: 'and',
-                        data: () => res
-                    }
-                } else return undefined
-            }
-            
-             
-            let acc = exp
-            let modified = false
-            while (true) {
+    return {
+      negative: exp.negative,
+      impliedPos,
+      impliedNeg,
+      id: exp.id,
+      op: 'or',
+      data: () => res
+    }
+  }
 
-                const res = collapseAnd(acc) ?? collapseOr(acc)
+  const collapseAnd = (exp) => {
+    if (exp.op !== 'and' || !canFlatten) return undefined
 
-                if (res !== undefined) {
-                    modified = true
-                    acc = res
-                } else break
-            }
+    let modified = false
+    const impliedNeg = [...(exp.impliedNeg ?? [])]
+    const impliedPos = [...(exp.impliedPos ?? [])]
 
-            if (modified && exp.data) {
-                return {
-                    negative: acc.negative,
-                    id: acc.id,
-                    op: exp.op,
-                    data: () => acc.data().map(x => compactify(x))
-                }
-            }
+    const res = exp.data().map(x => {
+      // only flatten a positive and-child
+      // and(and(A,B)) -> and(A,B): outer true => inner true
+      if (x.op === 'and' && !x.negative) {
+        modified = true
+        // inner id must be true if outer is true
+        impliedPos.push(x.id)
+        // and anything that was true-if-inner-true
+        // is also true-if-outer-true
+        impliedPos.push(...(x.impliedPos ?? []))
+        // x.impliedNeg is NOT merged:
+        // outer false does not imply inner false
+        return x.data()
+      }
+      return x
+    }).flat()
 
-            if (exp.op === 'not' && exp.exp().op !== undefined) return compactify(denot(exp))
+    if (!modified) return undefined
 
-            return exp
+    return {
+      negative: exp.negative,
+      impliedPos,
+      impliedNeg,
+      id: exp.id,
+      op: 'and',
+      data: () => res
+    }
+  }
 
-        }
+  let acc = exp
+  let modified = false
+  while (true) {
+    const res = collapseAnd(acc) ?? collapseOr(acc)
+    if (res !== undefined) {
+      modified = true
+      acc = res
+    } else break
+  }
+
+  if (modified && exp.data) {
+    return {
+      id: exp.id,
+      op: exp.op,
+      negative: exp.negative,
+      impliedPos: acc.impliedPos ?? [],
+      impliedNeg: acc.impliedNeg ?? [],
+      data: () => acc.data().map(x => compactify(x))
+    }
+  }
+
+  if (exp.op === 'not' && exp.exp().op !== undefined) {
+    return compactify(denot(exp))
+  }
+
+  // base case: preserve fields even if nothing collapsed
+  if (exp.op) {
+    return {
+      ...exp,
+      impliedPos: exp.impliedPos ?? [],
+      impliedNeg: exp.impliedNeg ?? []
+    }
+  }
+  return exp
+}
 
         const isVal = exp => !exp.op
         const isNotVal = exp => {
@@ -324,7 +366,7 @@ const replayResult = (res, pos, neg) => {
 
         const limit = 5000000
 
-        //todo: process nested AND and OR properly, compactify final result only
+        //todo: use isGenVal, account for implied pos and neg
         const solve = (exp, outerAndPositive = [], outerAndNegative = [], k = 1, nesting = 0) => {
             window.ticks++
 
