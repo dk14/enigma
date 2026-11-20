@@ -249,7 +249,7 @@
                 const res = exp.data().map(x => {
                     if (x.op === 'or' && !x.negative) {
                         modified = true
-                        impliedNeg.push(x.id)
+                        impliedNeg.push(x)
                         impliedNeg.push(...(x.impliedNeg ?? []))
                         return x.data()
                     }
@@ -279,7 +279,7 @@
 
                 if (x.op === 'and' && !x.negative) {
                         modified = true
-                        impliedPos.push(x.id)
+                        impliedPos.push(x)
                         impliedPos.push(...(x.impliedPos ?? []))
                         return x.data()
                     }
@@ -353,18 +353,15 @@
 
         const addPos = (arr, exp) => {
             const id = getid(exp)
-            if (arr.includes(id)) return true
-            if (exp.op && !exp.negative) arr.push(id, ...(exp.impliedPos ?? []))
-            else if (exp.op && exp.negative) arr.push(id, ...(exp.impliedPos ?? [])) // already swapped in denot
-            else arr.push(id)
+            if (arr.includes(id)) return false
+             arr.push(id)
             return true
         }
 
         const addNeg = (arr, exp) => {
             const id = getid(exp)
-            if (arr.includes(id)) return true
-            if (exp.op) arr.push(id, ...(exp.impliedNeg ?? []))
-            else arr.push(id)
+            if (arr.includes(id)) return false
+            arr.push(id)
             return true
         }
         // contradiction test, using id not object identity:
@@ -393,8 +390,13 @@
         }
 
 
-        const limit = 1000000
+        const limit = 10000
 
+        //todo1: memoize by supersets (query full superset of pos and neg), to remove EXP EXP bound in favor of EXP; 
+        // eg keep it as Np-hard as naive search for inputs, except worst case for this one is impossible practically for SHA-256, making curcuit full-EXP cost, costs full-EXP search;
+        // SAH256 authors would need to hide ALL non-contradictory cases, that's not practically possible (especially for pseudo-uniform) - we are looking only for ONE case.
+        
+        //todo2: add impliedPos and impliedNeg to array of toSolve in "and"
         const solve = (exp, outerAndPositive = [], outerAndNegative = [], k = 1, nesting = 0) => {
             if (!globalCtx.ticks) globalCtx.ticks = 0
             globalCtx.ticks++
