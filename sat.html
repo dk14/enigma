@@ -273,7 +273,8 @@ const replayResult = (res, pos, neg) => {
 
             if (modified && exp.data) {
                 return {
-                    id: exp.id,
+                    negative: acc.negative,
+                    id: acc.id,
                     op: exp.op,
                     data: () => acc.data().map(x => compactify(x))
                 }
