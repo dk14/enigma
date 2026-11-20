@@ -324,7 +324,7 @@ const replayResult = (res, pos, neg) => {
 
         const limit = 5000000
 
-        //todo: add memoize
+        //todo: process nested AND and OR properly, compactify final result only
         const solve = (exp, outerAndPositive = [], outerAndNegative = [], k = 1, nesting = 0) => {
             window.ticks++
 
