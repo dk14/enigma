@@ -126,27 +126,7 @@
 
     </script>
     <script>
-        //helpers
-
-    const addPos = (arr, exp) => {
-        const id = getid(exp)
-        if (arr.includes(id)) return true
-        if (exp.op && !exp.negative) arr.push(id, ...(exp.impliedPos ?? []))
-        else if (exp.op && exp.negative) arr.push(id, ...(exp.impliedPos ?? [])) // already swapped in denot
-        else arr.push(id)
-        return true
-    }
-    const addNeg = (arr, exp) => {
-        const id = getid(exp)
-        if (arr.includes(id)) return true
-        if (exp.op) arr.push(id, ...(exp.impliedNeg ?? []))
-        else arr.push(id)
-        return true
-    }
-    // contradiction test, using id not object identity:
-    const contradicts = (exp, pos, neg) => (isGenNotVal(exp) && pos.includes(getid(exp))) || (isGenVal(exp) && neg.includes(getid(exp)))
-
-
+        //memoization
 
     const UNDEF = "__UNDEF__";
 
@@ -156,8 +136,7 @@
         return id + pol + '|' + [...pos].sort((a,b)=>a-b).join(',') + '|' + [...neg].sort((a,b)=>a-b).join(',') + '|' + k
     }
 
-    // at START of solve - return fast if hit
-    // returns { hit: true, value } or { hit: false }
+
     const memoized = (exp, outerAndPositive, outerAndNegative, k) => {
         if (!globalCtx.memo) globalCtx.memo = {}
         const key = memoKey(exp, outerAndPositive, outerAndNegative, k);
@@ -168,7 +147,7 @@
         return { hit: false };
     };
 
-    // BEFORE returning result in solve
+
     const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
         if (!globalCtx.memo) globalCtx.memo = {}
         const key = memoKey(exp, outerAndPositive, outerAndNegative, k);
@@ -354,6 +333,33 @@
         }
         const isSomeVal = exp => isVal(exp) || isNotVal(exp)
 
+        const getid = exp => isSomeVal(exp) ? (isVal(exp) ? exp : exp.exp()) : exp.id
+        
+        const isGenVal = exp => isVal(exp) || !exp.negative
+        
+        const isGenNotVal = exp => isNotVal(exp) || exp.negative
+
+        const addPos = (arr, exp) => {
+            const id = getid(exp)
+            if (arr.includes(id)) return true
+            if (exp.op && !exp.negative) arr.push(id, ...(exp.impliedPos ?? []))
+            else if (exp.op && exp.negative) arr.push(id, ...(exp.impliedPos ?? [])) // already swapped in denot
+            else arr.push(id)
+            return true
+        }
+
+        const addNeg = (arr, exp) => {
+            const id = getid(exp)
+            if (arr.includes(id)) return true
+            if (exp.op) arr.push(id, ...(exp.impliedNeg ?? []))
+            else arr.push(id)
+            return true
+        }
+        // contradiction test, using id not object identity:
+        const contradicts = (exp, pos, neg) => (isGenNotVal(exp) && pos.includes(getid(exp))) || (isGenVal(exp) && neg.includes(getid(exp)))
+
+
+
         const checkContradiction = (exp, outerAndPositive, outerAndNegative, nesting) => {
             if (!(isSomeVal(exp))) {
                 return solve(exp, outerAndPositive, outerAndNegative, 1, nesting + 1)
@@ -425,6 +431,11 @@
 
                 // TODO2: add ids from toSolve to outers
 
+                exp.data().forEach(x => {
+                  if (contradicts(x, outerAndPositive, outerAndNegative)) return finish(undefined)
+                  if (isGenVal(x)) addPos(outerAndPositive, x)
+                  else addNeg(outerAndNegative, x)
+                })
 
                 const positions = toSolve.map(_ => 1)
 
