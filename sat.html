@@ -279,6 +279,8 @@ const replayResult = (res, pos, neg) => {
             return exp
 
         }
+        
+        //todo, add "negative" flag before applying demorgan, otherwise contradictions don't arise
 
         const isVal = exp => !exp.op
         const isNotVal = exp => {
