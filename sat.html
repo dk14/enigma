@@ -180,7 +180,18 @@
     </script>
     <script>
 
+
+
          const denot = (exp) => {
+             const syntheticNot = exp => {
+                return {
+                    negative: true,
+                    op: "not",
+                    id: exp.id ?? exp,
+                    exp : () => exp
+                }
+            }
+
             if (exp.op === 'not') {
                 if (exp.exp().op === 'or') {
                     return {
@@ -192,16 +203,7 @@
                       data: () => exp.exp().data().map(x => denot(not(x)))
                     }
                 } else if (exp.exp().op === 'and'){
-                    
-                    const syntheticNot = exp => {
-                        return {
-                            negative: true,
-                            op: "not",
-                            id: exp.id,
-                            exp : () => exp
-                        }
-                    }
-                    
+   
                     return {
                       negative: true,
                       op: 'or', 
@@ -214,7 +216,7 @@
                 } else if (exp.exp().op === 'not'){
                     return denot(exp.exp().exp())
                 } else {
-                    return exp
+                    return syntheticNot(exp.exp())
                 }
             } else {
                 if (exp.op) {
@@ -391,7 +393,7 @@
         }
 
 
-        const limit = 10000
+        const limit = 1000000
 
         const solve = (exp, outerAndPositive = [], outerAndNegative = [], k = 1, nesting = 0) => {
             if (!globalCtx.ticks) globalCtx.ticks = 0
