@@ -382,7 +382,7 @@
 
         window.ticks = 0
 
-        const limit = 5000000
+        const limit = 10000
 
         const solve = (exp, outerAndPositive = [], outerAndNegative = [], k = 1, nesting = 0) => {
             window.ticks++
@@ -422,6 +422,9 @@
                 return finish(exp)
             }
 
+ 
+            if (contradicts(exp, outerAndPositive, outerAndNegative)) return finish(undefined)
+
             if (exp.op === 'and') {
 
                 const extra = exp.data().filter(x => isSomeVal(x))
@@ -430,7 +433,7 @@
                 for (x of exp.data()){
                   if (contradicts(x, outerAndPositive, outerAndNegative)) return finish(undefined)
                   if (isGenVal(x)) addPos(outerAndPositive, x)
-                  else addNeg(outerAndNegative, x)
+                  else if (isGenNotVal(x)) addNeg(outerAndNegative, x)
                 }
 
                 const positions = toSolve.map(_ => 1)
@@ -1220,7 +1223,7 @@ const formAst = () => {
     }
 
     console.log("solve sha256")
-    //console.log(solve(denot(compactify(sha256DSL8(1, ctx).hash[0]))))
+    console.log(solve(denot(compactify(sha256DSL8(1, ctx).hash[0]))))
 
     // todo: enumerate ast nodes to form a DAG,to avoid intermdiate blow up. Node-id become variable.
     // we only open them after contradiction and var-dup passed. This willavoid intermediate blow-up
