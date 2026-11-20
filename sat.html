@@ -383,7 +383,7 @@
         }
 
 
-        const limit = 100000
+        const limit = 10000
 
         const solve = (exp, outerAndPositive = [], outerAndNegative = [], k = 1, nesting = 0) => {
             if (!globalCtx.ticks) globalCtx.ticks = 0
@@ -502,33 +502,29 @@
 
                 }
 
-                let result = []
-
                 let attempts = 0
 
                 const incrementAtPosition = (pos) => {
                     let j = pos
-                    while (true) {
+                    while (j >= 0) {
                         positions[j]++
                         if (positions[j] > limits[j]) {
                             positions[j] = 1
                             j--
-                        } else break
+                        } else return true
                     }
+                    return false
 
                 }
 
                 while(true) {
                     attempts++
-                    result = solveRest()
+                    const result = solveRest()
 
-                    if (!result.map) {
-                        if (toStop()) break;
-                        const failedPosition = result
-                        incrementAtPosition(failedPosition)
-                    } else {
+                    if (result.map) {
                         return finish(and(...[...extra, ...result]))
                     }
+                    if (toStop() || !incrementAtPosition(result)) break;
 
                 } 
 
