@@ -199,16 +199,13 @@
     </script>
     <script>
 
-         const denot = (exp) => { //todo: fix
+         const denot = (exp) => {
             if (exp.op === 'not') {
                 if (exp.exp().op === 'or') {
-                    // in denot, not-branch:
                     return {
                       negative: true,
                       op: 'and', // 
                       id: exp.exp().id,
-                      // Y = NOT(X). Y false => X true => X.impliedPos holds
-                      // Y true  => X false => X.impliedNeg holds
                       impliedNeg: exp.exp().impliedPos ?? [],
                       impliedPos: exp.exp().impliedNeg ?? [],
                       data: () => exp.exp().data().map(x => denot(not(x)))
@@ -220,8 +217,6 @@
                       negative: true,
                       op: 'or', 
                       id: exp.exp().id,
-                      // Y = NOT(X). Y false => X true => X.impliedPos holds
-                      // Y true  => X false => X.impliedNeg holds
                       impliedNeg: exp.exp().impliedPos ?? [],
                       impliedPos: exp.exp().impliedNeg ?? [],
                       data: () => exp.exp().data().map(x => denot(not(x)))
@@ -261,31 +256,24 @@
                 const impliedPos = [...(exp.impliedPos ?? [])]
 
                 const res = exp.data().map(x => {
-                // only flatten a positive or-child
-                // or(or(B,C)) -> or(B,C): outer false => inner false
-                if (x.op === 'or' && !x.negative) {
-                    modified = true
-                    // inner id must be false if outer is false
-                    impliedNeg.push(x.id)
-                    // and anything that was false-if-inner-false
-                    // is also false-if-outer-false
-                    impliedNeg.push(...(x.impliedNeg ?? []))
-                    // x.impliedPos is NOT merged:
-                    // outer true does not imply inner true
-                    return x.data()
-                }
-                return x
+                    if (x.op === 'or' && !x.negative) {
+                        modified = true
+                        impliedNeg.push(x.id)
+                        impliedNeg.push(...(x.impliedNeg ?? []))
+                        return x.data()
+                    }
+                    return x
                 }).flat()
 
                 if (!modified) return undefined
 
                 return {
-                negative: exp.negative,
-                impliedPos,
-                impliedNeg,
-                id: exp.id,
-                op: 'or',
-                data: () => res
+                    negative: exp.negative,
+                    impliedPos,
+                    impliedNeg,
+                    id: exp.id,
+                    op: 'or',
+                    data: () => res
                 }
             }
 
@@ -297,31 +285,25 @@
                 const impliedPos = [...(exp.impliedPos ?? [])]
 
                 const res = exp.data().map(x => {
-                // only flatten a positive and-child
-                // and(and(A,B)) -> and(A,B): outer true => inner true
+
                 if (x.op === 'and' && !x.negative) {
-                    modified = true
-                    // inner id must be true if outer is true
-                    impliedPos.push(x.id)
-                    // and anything that was true-if-inner-true
-                    // is also true-if-outer-true
-                    impliedPos.push(...(x.impliedPos ?? []))
-                    // x.impliedNeg is NOT merged:
-                    // outer false does not imply inner false
-                    return x.data()
-                }
-                return x
+                        modified = true
+                        impliedPos.push(x.id)
+                        impliedPos.push(...(x.impliedPos ?? []))
+                        return x.data()
+                    }
+                    return x
                 }).flat()
 
                 if (!modified) return undefined
 
                 return {
-                negative: exp.negative,
-                impliedPos,
-                impliedNeg,
-                id: exp.id,
-                op: 'and',
-                data: () => res
+                    negative: exp.negative,
+                    impliedPos,
+                    impliedNeg,
+                    id: exp.id,
+                    op: 'and',
+                    data: () => res
                 }
             }
 
@@ -330,19 +312,19 @@
             while (true) {
                 const res = collapseAnd(acc) ?? collapseOr(acc)
                 if (res !== undefined) {
-                modified = true
-                acc = res
+                    modified = true
+                    acc = res
                 } else break
             }
 
             if (modified && exp.data) {
                 return {
-                id: exp.id,
-                op: exp.op,
-                negative: exp.negative,
-                impliedPos: acc.impliedPos ?? [],
-                impliedNeg: acc.impliedNeg ?? [],
-                data: () => acc.data().map(x => compactify(x))
+                    id: exp.id,
+                    op: exp.op,
+                    negative: exp.negative,
+                    impliedPos: acc.impliedPos ?? [],
+                    impliedNeg: acc.impliedNeg ?? [],
+                    data: () => acc.data().map(x => compactify(x))
                 }
             }
 
@@ -362,6 +344,7 @@
         }
 
         const isVal = exp => !exp.op
+        
         const isNotVal = exp => {
             if (exp.op === 'not') {
                 if (exp.exp().op) throw "needs denot"
