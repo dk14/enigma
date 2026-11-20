@@ -131,8 +131,8 @@
     const UNDEF = "__UNDEF__";
 
     const memoKey = (exp, pos, neg, k) => {
-    const id = exp.op ? exp.id : exp
-    const pol = exp.op ? (exp.negative ? 'N' : 'P') : 'V'
+        const id = exp.op ? exp.id : exp
+        const pol = isGenVal(exp) ? 'P' : 'N'
         return id + pol + '|' + [...pos].sort((a,b)=>a-b).join(',') + '|' + [...neg].sort((a,b)=>a-b).join(',') + '|' + k
     }
 
@@ -382,17 +382,19 @@
             }
         }
 
-        window.ticks = 0
 
         const limit = 100000
 
         const solve = (exp, outerAndPositive = [], outerAndNegative = [], k = 1, nesting = 0) => {
-            window.ticks++
+            if (!globalCtx.ticks) globalCtx.ticks = 0
+            globalCtx.ticks++
 
-            if (window.ticks > limit) {
+            if (globalCtx.ticks > limit) {
                 console.log("\n\n\nk = " + k)
                 console.log("outer negatives = " + outerAndNegative)
                 console.log("outer positives = " + outerAndPositive)
+
+                console.log(globalCtx.memo)
                 
                 throw "too many contradictions, over " + limit + ", nesting = " + nesting + ", memo length = " + Object.keys(globalCtx.memo).length + " hits = " + globalCtx.hits
             }
