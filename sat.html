@@ -193,6 +193,14 @@
                     }
                 } else if (exp.exp().op === 'and'){
                     
+                    const syntheticNot = exp => {
+                        return {
+                            negative: true,
+                            op: "not",
+                            id: exp.id,
+                            exp : () => exp
+                        }
+                    }
                     
                     return {
                       negative: true,
@@ -200,7 +208,7 @@
                       id: exp.exp().id,
                       impliedNeg: exp.exp().impliedPos ?? [],
                       impliedPos: exp.exp().impliedNeg ?? [],
-                      data: () => exp.exp().data().map(x => denot(not(x)))
+                      data: () => exp.exp().data().map(x => denot(syntheticNot(x)))
                     }
                     
                 } else if (exp.exp().op === 'not'){
