@@ -243,14 +243,36 @@
                 if (exp.op !== 'or' || !canFlatten) return undefined
 
                 let modified = false
-                const impliedNeg = [...(exp.impliedNeg ?? [])]
-                const impliedPos = [...(exp.impliedPos ?? [])]
+               
+                
+                const impliedPos = () => {
+                    const imp = []
+                    
+                    exp.data().forEach(x => {
+                        if (x.op === 'or' && !x.negative) {
+                            imp.push(x)
+                            if (x.impliedPos) imp.push(...(x.impliedPos()))
+                        }
+                    })
+                    return imp
+                }
+
+                const impliedNeg = () => {
+                     const imp = []
+                    
+                    exp.data().forEach(x => {
+                        if (x.op === 'or' && x.negative) {
+                            imp.push(x)
+                            if (x.impliedNeg) imp.push(...(x.impliedNeg()))
+                        }
+                    })
+
+                    return imp
+                }
 
                 const res = exp.data().map(x => {
                     if (x.op === 'or' && !x.negative) {
                         modified = true
-                        impliedNeg.push(x)
-                        impliedNeg.push(...(x.impliedNeg ?? []))
                         return x.data()
                     }
                     return x
@@ -272,12 +294,39 @@
                 if (exp.op !== 'and' || !canFlatten) return undefined
 
                 let modified = false
-                const impliedNeg = [...(exp.impliedNeg ?? [])]
-                const impliedPos = [...(exp.impliedPos ?? [])]
+                
+                
+                const impliedPos = () => {
+                    const imp = []
+                    
+                    exp.data().forEach(x => {
+
+                        if (x.op === 'and' && !x.negative) {
+                            imp.push(x)
+                            if (x.impliedPos) imp.push(...(x.impliedPos()))
+                        }
+                    })
+
+                    return imp
+                }
+
+                const impliedNeg = () => {
+                     const imp = []
+                    
+                    exp.data().forEach(x => {
+
+                        if (x.op === 'and' && x.negative) {
+                            imp.push(x)
+                            if (x.impliedNeg) imp.push(...(x.impliedNeg()))
+                        }
+                    })
+
+                    return imp
+                }
 
                 const res = exp.data().map(x => {
 
-                if (x.op === 'and' && !x.negative) {
+                    if (x.op === 'and' && !x.negative) {
                         modified = true
                         impliedPos.push(x)
                         impliedPos.push(...(x.impliedPos ?? []))
@@ -313,8 +362,8 @@
                     id: exp.id,
                     op: exp.op,
                     negative: exp.negative,
-                    impliedPos: acc.impliedPos ?? [],
-                    impliedNeg: acc.impliedNeg ?? [],
+                    impliedPos: acc.impliedPos,
+                    impliedNeg: acc.impliedNeg,
                     data: () => acc.data().map(x => compactify(x))
                 }
             }
@@ -325,10 +374,11 @@
 
             
             if (exp.op) {
+                
                 return {
                     ...exp,
-                    impliedPos: exp.impliedPos ?? [],
-                    impliedNeg: exp.impliedNeg ?? []
+                    impliedPos: exp.impliedPos ?? (() => []),
+                    impliedNeg: exp.impliedNeg ?? (() => [])
                 }
             }
             return exp
@@ -364,7 +414,7 @@
             arr.push(id)
             return true
         }
-        // contradiction test, using id not object identity:
+
         const contradicts = (exp, pos, neg) => (isGenNotVal(exp) && pos.includes(getid(exp))) || (isGenVal(exp) && neg.includes(getid(exp)))
 
         const checkContradictionGen = (exp, pos, neg, nesting) => {
@@ -604,6 +654,8 @@
         const b = v(ctx)
 
         const expression = compactify(and( or(not(a), not(b)), or(a, a)))
+
+        console.log("implied = " + expression.impliedPos())
 
         const look = p()
         look(show(expression))
