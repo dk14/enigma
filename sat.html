@@ -332,12 +332,12 @@
                 return compactify(denot(exp))
             }
 
-            // base case: preserve fields even if nothing collapsed
+            
             if (exp.op) {
                 return {
-                ...exp,
-                impliedPos: exp.impliedPos ?? [],
-                impliedNeg: exp.impliedNeg ?? []
+                    ...exp,
+                    impliedPos: exp.impliedPos ?? [],
+                    impliedNeg: exp.impliedNeg ?? []
                 }
             }
             return exp
@@ -359,11 +359,11 @@
                 return solve(exp, outerAndPositive, outerAndNegative, 1, nesting + 1)
             } else {
    
-                if (isNotVal(exp) && outerAndPositive.find(x => exp.exp !== undefined && exp.exp === x)) {
+                if (isNotVal(exp) && outerAndPositive.find(x => exp.exp !== undefined && exp.exp() === x)) {
                     return undefined
                 }
 
-                if (isVal(exp) && outerAndNegative.find(x => exp.exp === x)) {
+                if (isVal(exp) && outerAndNegative.find(x => exp.exp() === x)) {
                     return undefined
                 }
 
@@ -424,6 +424,12 @@
                 extra.filter(x => isNotVal(x)).forEach(x => {if (!outerAndNegative.some(y => x.exp() === y)) outerAndNegative.push(x.exp())})
 
                 // TODO2: add ids from toSolve to outers
+
+                exp.data().forEach(x => {
+                  if (contradicts(x, outerAndPositive, outerAndNegative)) return finish(undefined)
+                  if (isGenVal(x)) addPos(outerAndPositive, x)
+                  else addNeg(outerAndNegative, x)
+                })
 
                 const positions = toSolve.map(_ => 1)
 
