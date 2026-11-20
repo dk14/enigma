@@ -363,7 +363,7 @@
                     return undefined
                 }
 
-                if (isVal(exp) && outerAndNegative.find(x => exp.exp() === x)) {
+                if (isVal(exp) && outerAndNegative.find(x => exp.exp === x)) {
                     return undefined
                 }
 
@@ -425,11 +425,6 @@
 
                 // TODO2: add ids from toSolve to outers
 
-                exp.data().forEach(x => {
-                  if (contradicts(x, outerAndPositive, outerAndNegative)) return finish(undefined)
-                  if (isGenVal(x)) addPos(outerAndPositive, x)
-                  else addNeg(outerAndNegative, x)
-                })
 
                 const positions = toSolve.map(_ => 1)
 
