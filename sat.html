@@ -14,40 +14,41 @@
         }
     </script>
     <script>
-        
+        let globalCtx = undefined
         const v = (ctx) => {
             if (!ctx.counter) ctx.counter = 0
             ctx.counter++
+            globalCtx = ctx
             return ctx.counter
         }
 
         const and = (...arr) => {
-            if (!ctx.counter) ctx.counter = 0
-            ctx.counter++
+            if (!globalCtx.counter) globalCtx.counter = 0
+            globalCtx.counter++
             return {
                 op: 'and',
                 data: () => arr,
-                id: ctx.counter
+                id: globalCtx.counter
             }
         }
 
         const or = (...arr) => {
-            if (!ctx.counter) ctx.counter = 0
-            ctx.counter++
+            if (!globalCtx.counter) globalCtx.counter = 0
+            globalCtx.counter++
             return {
                 op: 'or',
                 data:() => arr,
-                id: ctx.counter
+                id: globalCtx.counter
             }
         }
 
         const not = (exp) => {
-            if (!ctx.counter) ctx.counter = 0
-            ctx.counter++
+            if (!globalCtx.counter) globalCtx.counter = 0
+            globalCtx.counter++
             return {
                 op: 'not',
                 exp: () => exp,
-                id: ctx.counter
+                id: globalCtx.counter
             }
         }
 
@@ -125,19 +126,107 @@
 
     </script>
     <script>
+        //helpers
 
-        const denot = (exp) => { //todo: fix
+    const addPos = (arr, exp) => {
+        const id = getid(exp)
+        if (arr.includes(id)) return true
+        if (exp.op && !exp.negative) arr.push(id, ...(exp.impliedPos ?? []))
+        else if (exp.op && exp.negative) arr.push(id, ...(exp.impliedPos ?? [])) // already swapped in denot
+        else arr.push(id)
+        return true
+    }
+    const addNeg = (arr, exp) => {
+        const id = getid(exp)
+        if (arr.includes(id)) return true
+        if (exp.op) arr.push(id, ...(exp.impliedNeg ?? []))
+        else arr.push(id)
+        return true
+    }
+    // contradiction test, using id not object identity:
+    const contradicts = (exp, pos, neg) => (isGenNotVal(exp) && pos.includes(getid(exp))) || (isGenVal(exp) && neg.includes(getid(exp)))
+
+
+
+    const UNDEF = "__UNDEF__";
+
+    const memoKey = (exp, pos, neg, k) => {
+    const id = exp.op ? exp.id : exp
+    const pol = exp.op ? (exp.negative ? 'N' : 'P') : 'V'
+        return id + pol + '|' + [...pos].sort((a,b)=>a-b).join(',') + '|' + [...neg].sort((a,b)=>a-b).join(',') + '|' + k
+    }
+
+    // at START of solve - return fast if hit
+    // returns { hit: true, value } or { hit: false }
+    const memoized = (exp, outerAndPositive, outerAndNegative, k) => {
+        if (!globalCtx.memo) globalCtx.memo = {}
+        const key = memoKey(exp, outerAndPositive, outerAndNegative, k);
+        if (key in globalCtx.memo) {
+            const stored = globalCtx.memo[key];
+            return { hit: true, value: stored === UNDEF ? undefined : stored };
+        }
+        return { hit: false };
+    };
+
+    // BEFORE returning result in solve
+    const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
+        if (!globalCtx.memo) globalCtx.memo = {}
+        const key = memoKey(exp, outerAndPositive, outerAndNegative, k);
+        globalCtx.memo[key] = (result === undefined ? UNDEF : result);
+        return result;
+    };
+
+    const replayResult = (res, pos, neg) => {
+        if (res === undefined) return
+        if (!res.op) {
+            if (!pos.includes(res)) pos.push(res)
+            return
+        }
+        if (res.op === 'not') {
+            const v = res.exp()
+            if (!neg.includes(v)) neg.push(v)
+            return
+        }
+        if (res.op === 'and') {
+            res.data().forEach(x => replayResult(x, pos, neg))
+            return
+        }
+        // or-node as a result: don't recurse, just mark the node itself
+        if (!pos.includes(res.id)) pos.push(res.id)
+    }
+
+ 
+    </script>
+    <script>
+
+         const denot = (exp) => { //todo: fix
             if (exp.op === 'not') {
                 if (exp.exp().op === 'or') {
+                    // in denot, not-branch:
                     return {
-                        op: 'and',
-                        data: () => exp.exp().data().map(x => denot(not(x)))
+                      negative: true,
+                      op: 'and', // 
+                      id: exp.exp().id,
+                      // Y = NOT(X). Y false => X true => X.impliedPos holds
+                      // Y true  => X false => X.impliedNeg holds
+                      impliedNeg: exp.exp().impliedPos ?? [],
+                      impliedPos: exp.exp().impliedNeg ?? [],
+                      data: () => exp.exp().data().map(x => denot(not(x)))
                     }
                 } else if (exp.exp().op === 'and'){
+                    
+                    
                     return {
-                        op: 'or',
-                        data: () => exp.exp().data().map(x => denot(not(x)))
+                      negative: true,
+                      op: 'or', 
+                      id: exp.exp().id,
+                      // Y = NOT(X). Y false => X true => X.impliedPos holds
+                      // Y true  => X false => X.impliedNeg holds
+                      impliedNeg: exp.exp().impliedPos ?? [],
+                      impliedPos: exp.exp().impliedNeg ?? [],
+                      data: () => exp.exp().data().map(x => denot(not(x)))
                     }
+                    
                 } else if (exp.exp().op === 'not'){
                     return denot(exp.exp().exp())
                 } else {
@@ -146,9 +235,13 @@
             } else {
                 if (exp.op) {
                     return {
-                        op: exp.op,
-                        data: () => exp.data().map(x => denot(x))
+                      negative: false,
+                      impliedPos: exp.impliedPos ?? [],
+                      impliedNeg: exp.impliedNeg ?? [],
+                      id: exp.id, op: exp.op,
+                      data: () => exp.data().map(x => denot(x))
                     }
+                                
                 } else {
                     return exp
                 }
@@ -158,68 +251,114 @@
         
 
         const compactify = (exp) => {
+            const canFlatten = !exp.negative
 
             const collapseOr = (exp) => {
-                if (exp.op === 'or') {
-                    let modified = false
-                    const res = exp.data().map(x => {
-                        if (x.op === 'or') {
-                             modified = true
-                            return x.data()
-                        } else return x
-                    }).flat()
+                if (exp.op !== 'or' || !canFlatten) return undefined
 
-                    if (!modified) return undefined
+                let modified = false
+                const impliedNeg = [...(exp.impliedNeg ?? [])]
+                const impliedPos = [...(exp.impliedPos ?? [])]
 
-                    return {
-                        op: 'or',
-                        data: () => res
-                    }
-                } else return undefined
+                const res = exp.data().map(x => {
+                // only flatten a positive or-child
+                // or(or(B,C)) -> or(B,C): outer false => inner false
+                if (x.op === 'or' && !x.negative) {
+                    modified = true
+                    // inner id must be false if outer is false
+                    impliedNeg.push(x.id)
+                    // and anything that was false-if-inner-false
+                    // is also false-if-outer-false
+                    impliedNeg.push(...(x.impliedNeg ?? []))
+                    // x.impliedPos is NOT merged:
+                    // outer true does not imply inner true
+                    return x.data()
+                }
+                return x
+                }).flat()
+
+                if (!modified) return undefined
+
+                return {
+                negative: exp.negative,
+                impliedPos,
+                impliedNeg,
+                id: exp.id,
+                op: 'or',
+                data: () => res
+                }
             }
 
             const collapseAnd = (exp) => {
-                if (exp.op === 'and') {
-                    let modified = false
-                    const res = exp.data().map(x => {
-                        if (x.op === 'and') {
-                            modified = true
-                            return x.data()
-                        } else return x
-                    }).flat()
+                if (exp.op !== 'and' || !canFlatten) return undefined
 
-                    if (!modified) return undefined
+                let modified = false
+                const impliedNeg = [...(exp.impliedNeg ?? [])]
+                const impliedPos = [...(exp.impliedPos ?? [])]
 
-                    return {
-                        op: 'and',
-                        data: () => res
-                    }
-                } else return undefined
+                const res = exp.data().map(x => {
+                // only flatten a positive and-child
+                // and(and(A,B)) -> and(A,B): outer true => inner true
+                if (x.op === 'and' && !x.negative) {
+                    modified = true
+                    // inner id must be true if outer is true
+                    impliedPos.push(x.id)
+                    // and anything that was true-if-inner-true
+                    // is also true-if-outer-true
+                    impliedPos.push(...(x.impliedPos ?? []))
+                    // x.impliedNeg is NOT merged:
+                    // outer false does not imply inner false
+                    return x.data()
+                }
+                return x
+                }).flat()
+
+                if (!modified) return undefined
+
+                return {
+                negative: exp.negative,
+                impliedPos,
+                impliedNeg,
+                id: exp.id,
+                op: 'and',
+                data: () => res
+                }
             }
-            
+
             let acc = exp
             let modified = false
             while (true) {
-
                 const res = collapseAnd(acc) ?? collapseOr(acc)
-
                 if (res !== undefined) {
-                    modified = true
-                    acc = res
+                modified = true
+                acc = res
                 } else break
             }
 
             if (modified && exp.data) {
                 return {
-                    op: exp.op,
-                    data: () => exp.data().map(x => compactify(x))
+                id: exp.id,
+                op: exp.op,
+                negative: exp.negative,
+                impliedPos: acc.impliedPos ?? [],
+                impliedNeg: acc.impliedNeg ?? [],
+                data: () => acc.data().map(x => compactify(x))
                 }
             }
 
-            if (exp.op === 'not' && exp.exp().op !== undefined) return compactify(denot(exp))
+            if (exp.op === 'not' && exp.exp().op !== undefined) {
+                return compactify(denot(exp))
+            }
 
+            // base case: preserve fields even if nothing collapsed
+            if (exp.op) {
+                return {
+                ...exp,
+                impliedPos: exp.impliedPos ?? [],
+                impliedNeg: exp.impliedNeg ?? []
+                }
+            }
             return exp
-
         }
 
         const isVal = exp => !exp.op
@@ -263,22 +402,36 @@
                 
                 throw "too many contradictions, over " + limit + ", nesting = " + nesting
             }
+            
+            const snapPos = [...outerAndPositive]
+            const snapNeg = [...outerAndNegative]
+            const mm = memoized(exp, snapPos, snapNeg, k)
 
+            if (mm.hit) {
+                if (mm.value !== undefined) {
+                    if (exp.op && !outerAndPositive.includes(exp.id)) outerAndPositive.push(exp.id)
+                    replayResult(mm.value, outerAndPositive, outerAndNegative)
+                }
+                return mm.value
+            }
+            
+            const finish = (r) => memoize(exp, snapPos, snapNeg, k, r)
+    
             if (!exp.op) { 
-                if (outerAndNegative.some(x => x === exp)) return undefined
+                if (outerAndNegative.some(x => x === exp)) return finish(undefined)
                 outerAndPositive.push(exp)
-                return exp
+                return finish(exp)
             }
 
             if (exp.op === 'not') {
                 if (exp.exp().op) throw "needs denot!"
-                if (outerAndPositive.some(x => x === exp.exp())) return undefined
+                if (outerAndPositive.some(x => x === exp.exp())) return finish(undefined)
                 outerAndNegative.push(exp.exp())
-                return exp
+                return finish(exp)
             }
 
             if (exp.op === 'and') {
-                // console.log("+++++")
+                //console.log("+++++")
 
                 // TODO1: filter from extra AND toSolve by varnum and id, correspondingly
                 const extra = exp.data().filter(x => isSomeVal(x))
@@ -340,7 +493,9 @@
                                 
                             }
 
-                            //console.log(outerAndPositive)    
+                            //console.log(outerAndPositive)
+                           
+                            
 
                         } else {
                             return i
@@ -389,13 +544,14 @@
 
                         //todo
 
+                        
                     } else {
-                        return and(...[...extra, ...result])
+                        return finish(and(...[...extra, ...result]))
                     }
 
                 } 
 
-                return undefined    
+                return finish(undefined)    
             }
 
             if (exp.op === 'or'){
@@ -416,12 +572,14 @@
                             //console.log("\n\n\n\n\n\nsolved = " + show(solved))
                             //console.log("outer negatives = " + outerAndNegative)
                             //console.log("outer positives = " + outerAndPositive)
-                            return solved
+                            return finish(solved)
                         }
                     } else {
                         if (window.ticks < 100) console.log("\n contradiction!!!!!")
                     }
                 }
+                
+                return finish(undefined)
             } 
         }
 
@@ -1092,7 +1250,7 @@ const formAst = () => {
     }
 
     console.log("solve sha256")
-    console.log(solve(denot(compactify(sha256DSL8(1, ctx).hash[0]))))
+    //console.log(solve(denot(compactify(sha256DSL8(1, ctx).hash[0]))))
 
     // todo: enumerate ast nodes to form a DAG,to avoid intermdiate blow up. Node-id become variable.
     // we only open them after contradiction and var-dup passed. This willavoid intermediate blow-up
