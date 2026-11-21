@@ -157,13 +157,17 @@
             const key = memoKey(exp, k, {id: pos, negative: true});
             if (key in globalCtx.memo) return makeHit(key)
 
-            //todo for positive result too
+            const key2 = memoKey(exp, k, undefined, {id: pos, negative: false});
+            if (key2 in globalCtx.memo) return makeHit(key2)
 
         }
 
         for (neg of outerAndNegative) {
             const key = memoKey(exp, k, {id: neg, negative: false});
             if (key in globalCtx.memo) return makeHit(key)
+
+            const key2 = memoKey(exp, k, undefined, {id: neg, negative: true});
+            if (key2 in globalCtx.memo) return makeHit(key2)
         }
         
         return { hit: false };
