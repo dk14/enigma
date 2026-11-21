@@ -179,20 +179,22 @@
                 globalCtx.memo[key] = UNDEF
             }
 
-        } else {
-            //todo: enumerate all variables in result
-            // add entry per each
-            const pos = outerAndPositive
-            const neg = outerAndNegative
+        } else if (result !== undefined) {
+            const compact = compactify(result)
+            if (isSomeVal(compact)) {
+                const key = memoKey(exp, k, undefined, compact);
+                globalCtx.memo[key] = compact;
 
-            const key = memoKey(exp, k, undefined);
-            //globalCtx.memo[key] = (result === undefined ? UNDEF : result);
+            } else {
+                for (x of compact.data()){
+                    const key = memoKey(exp, k, undefined, x);
+                    globalCtx.memo[key] = x;
+                }
 
-        }
-
-
-        
-        
+            }
+            
+            
+        }    
         
         return result;
     };
