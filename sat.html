@@ -139,7 +139,7 @@
 const memoKey = (exp, pos, neg, k) => {
   const id = exp.op ? exp.id : exp
   const pol = exp.op ? (exp.negative ? 'N' : 'P') : 'V'
-  return id + pol + '|' + (exp.op ?? "v") + "|" + [...pos].filter(x => globalCtx.leafs.has(x)).sort((a,b)=>a-b).join(',') + '|' + [...neg].filter(x => globalCtx.leafs.has(x)).sort((a,b)=>a-b).join(',') + '|' + k
+  return id + pol + '|' + (exp.op ?? "v") + (exp.synthetic ? "synthetic" : "") + "|" + [...pos].filter(x => globalCtx.leafs.has(x)).sort((a,b)=>a-b).join(',') + '|' + [...neg].filter(x => globalCtx.leafs.has(x)).sort((a,b)=>a-b).join(',') + '|' + k
 }
 
 // at START of solve - return fast if hit
@@ -198,6 +198,7 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
 
         const syntheticAnd = exp => {
             return {
+                synthetic: true,
                 negative: exp.negative,
                 op: "and",
                 id: exp.id ?? exp,
@@ -205,19 +206,43 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
             }
         }
 
+        const syntheticOr = exp => {
+            return {
+                synthetic: true,
+                negative: exp.negative,
+                op: "and",
+                id: exp.id ?? exp,
+                data : () => [exp]
+            }
+        }
+
+        const makeNode = (op, negative, id, data) => {
+            const opposite = op === 'and' ? 'or' : 'and'
+            const wrapped = data().map(x => {
+                if (!isSomeVal(x) && x.op === op) {
+                return {
+                    synthetic: true,
+                    negative: false,
+                    op: opposite,
+                    id: x.id, //memoization remembers 'op', no collision
+                    data: () => [x]
+                }
+                }
+                return x
+            })
+            return { negative, op, id, data: () => wrapped }
+        }
 
 
-         const denot = (exp) => {
-             
+    
 
+         const denot = (exp) => { 
             if (exp.op === 'not') {
                 if (exp.exp().op === 'or') {
                     return {
                       negative: true,
                       op: 'and', // 
                       id: exp.exp().id,
-                      impliedNeg: exp.exp().impliedNeg ?? (() => []),
-                      impliedPos: exp.exp().impliedPos ?? (() => []),
                       data: () => exp.exp().data().map(x => denot(syntheticNot(x)))
                     }
                 } else if (exp.exp().op === 'and'){
@@ -226,8 +251,6 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
                       negative: true,
                       op: 'or', 
                       id: exp.exp().id,
-                      impliedNeg: exp.exp().impliedPos ?? (() => []),
-                      impliedPos: exp.exp().impliedNeg ?? (() => []),
                       data: () => exp.exp().data().map(x => denot(syntheticNot(x)))
                     }
                     
@@ -240,8 +263,6 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
                 if (exp.op) {
                     return {
                       negative: false,
-                      impliedPos: exp.impliedPos ?? (() => []),
-                      impliedNeg: exp.impliedNeg ?? (() => []),
                       id: exp.id, op: exp.op,
                       data: () => exp.data().map(x => denot(x))
                     }
@@ -675,6 +696,9 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
 
 
         console.log(show(denot(arrExp)))
+
+        console.log(denot(arrExp).op)
+
 
         const solution = solve(denot(arrExp))
 
@@ -1308,7 +1332,7 @@ const formAst = () => {
     console.log("solve sha...")
     const exp = denot(sha256DSL8(1, ctx3).hash[0])
     //console.log("evaluated = " + evaluate(exp, numberToArray(2, 8)))
-    console.log(solve(exp))
+    //console.log(solve(exp))
 
     // todo: enumerate ast nodes to form a DAG,to avoid intermdiate blow up. Node-id become variable.
     // we only open them after contradiction and var-dup passed. This willavoid intermediate blow-up
