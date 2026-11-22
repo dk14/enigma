@@ -17,8 +17,10 @@
         let globalCtx = undefined
         const v = (ctx) => {
             if (!ctx.counter) ctx.counter = 0
+            if (!ctx.leafs) ctx.leafs = new Set()
             ctx.counter++
             globalCtx = ctx
+            ctx.leafs.add(ctx.counter)
             return ctx.counter
         }
 
@@ -97,6 +99,7 @@
         }
 
         const solutionToNum = (exp, n) => {
+            if (!exp) return undefined
             const bitarray = []
             compactify(exp).data().forEach(x => {
                 if (isVal(x)) {
@@ -113,7 +116,7 @@
                 }
             }
             const str = bitarray.map(x => x.toString()).join('')
-            console.log(compactify(exp).data())
+            //console.log(compactify(exp).data())
             return parseInt(str, 2)
         }
 
@@ -130,78 +133,36 @@
 
     const UNDEF = "__UNDEF__";
 
-    const memoKey = (exp, k, contradiction, noncontradiction) => {
-        const id = exp.op ? exp.id : exp
-        const pol = isGenVal(exp) ? 'P' : 'N'
-
-        if (contradiction) {
-            return id + pol + '|fail|' +  (contradiction.negative ? '-': '+')+ (contradiction.id ?? contradiction) + '|k=' + k
-        } else if (noncontradiction) {
-            return id + pol + '|success|' + (noncontradiction.negative ? '-': '+')+ (noncontradiction.id ?? noncontradiction) + '|k=' + k
-        }
-    }
-        
+    
 
 
-    const memoized = (exp, outerAndPositive, outerAndNegative, k) => {
-        if (!globalCtx.memo) globalCtx.memo = {}
+const memoKey = (exp, pos, neg, k) => {
+  const id = exp.op ? exp.id : exp
+  const pol = exp.op ? (exp.negative ? 'N' : 'P') : 'V'
+  return id + pol + '|' + (exp.op ?? "v") + "|" + [...pos].filter(x => globalCtx.leafs.has(x)).sort((a,b)=>a-b).join(',') + '|' + [...neg].filter(x => globalCtx.leafs.has(x)).sort((a,b)=>a-b).join(',') + '|' + k
+}
 
-        const makeHit = (key) => {
-            const stored = globalCtx.memo[key];
-            if (!globalCtx.hits) globalCtx.hits = 0
-            globalCtx.hits++
-            return { hit: true, value: stored === UNDEF ? undefined : stored };
-        }
+// at START of solve - return fast if hit
+// returns { hit: true, value } or { hit: false }
+const memoized = (exp, outerAndPositive, outerAndNegative, k) => {
+if (!globalCtx.memo) globalCtx.memo = {}
+if (!globalCtx.hits) globalCtx.hits = 0
+const key = memoKey(exp, outerAndPositive, outerAndNegative, k);
+  if (key in globalCtx.memo) {
+    const stored = globalCtx.memo[key];
+    globalCtx.hits++
+    return { hit: true, value: stored === UNDEF ? undefined : stored };
+  }
+  return { hit: false };
+};
 
-        for (pos of outerAndPositive) {
-            const key = memoKey(exp, k, {id: pos, negative: true});
-            if (key in globalCtx.memo) return makeHit(key)
-
-            const key2 = memoKey(exp, k, undefined, {id: pos, negative: false});
-            if (key2 in globalCtx.memo) return makeHit(key2)
-
-        }
-
-        for (neg of outerAndNegative) {
-            const key = memoKey(exp, k, {id: neg, negative: false});
-            if (key in globalCtx.memo) return makeHit(key)
-
-            const key2 = memoKey(exp, k, undefined, {id: neg, negative: true});
-            if (key2 in globalCtx.memo) return makeHit(key2)
-        }
-        
-        return { hit: false };
-    };
-
-
-    const memoize = (exp, outerAndPositive, outerAndNegative, k, result, contradiction, contradictions) => {
-        if (!globalCtx.memo) globalCtx.memo = {}
-
-        if (contradictions && contradictions.length !== 0 && result === undefined) {
-            for (x of contradictions){
-                const key = memoKey(exp, k, x);
-                globalCtx.memo[key] = UNDEF
-            }
-
-        } else if (result !== undefined) {
-            const compact = compactify(result)
-            if (isSomeVal(compact)) {
-                const key = memoKey(exp, k, undefined, compact);
-                globalCtx.memo[key] = compact;
-
-            } else {
-                for (x of compact.data()){
-                    const key = memoKey(exp, k, undefined, x);
-                    globalCtx.memo[key] = x;
-                }
-
-            }
-            
-            
-        }    
-        
-        return result;
-    };
+// BEFORE returning result in solve
+const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
+  if (!globalCtx.memo) globalCtx.memo = {}
+  const key = memoKey(exp, outerAndPositive, outerAndNegative, k);
+  globalCtx.memo[key] = (result === undefined ? UNDEF : result);
+  return result;
+};
 
     const replayResult = (res, pos, neg) => {
         if (res === undefined) return
@@ -226,19 +187,28 @@
     </script>
     <script>
 
+        const syntheticNot = exp => {
+            return {
+                negative: true,
+                op: "not",
+                id: exp.id ?? exp,
+                exp : () => exp
+            }
+        }
+
+        const syntheticAnd = exp => {
+            return {
+                negative: exp.negative,
+                op: "and",
+                id: exp.id ?? exp,
+                data : () => [exp]
+            }
+        }
+
 
 
          const denot = (exp) => {
-             const syntheticNot = exp => {
-                return {
-                    negative: true,
-                    op: "not",
-                    id: exp.id ?? exp,
-                    exp : () => exp,
-                    impliedNeg: exp.impliedNeg ?? (() => []),
-                    impliedPos: exp.impliedPos ?? (() => [])
-                }
-            }
+             
 
             if (exp.op === 'not') {
                 if (exp.exp().op === 'or') {
@@ -285,41 +255,15 @@
         
 
         const compactify = (exp) => {
-            const canFlatten = !exp.negative
 
             const collapseOr = (exp) => {
-                if (exp.op !== 'or' || !canFlatten) return undefined
+                if (exp.op !== 'or') return undefined
 
                 let modified = false
                
-                
-                const impliedPos = () => {
-                    const imp = []
-                    
-                    exp.data().forEach(x => {
-                        if (x.op === 'or' && !x.negative) {
-                            imp.push(x)
-                            if (x.impliedPos) imp.push(...(x.impliedPos()))
-                        }
-                    })
-                    return imp
-                }
-
-                const impliedNeg = () => {
-                     const imp = []
-                    
-                    exp.data().forEach(x => {
-                        if (x.op === 'or' && x.negative) {
-                            imp.push(x)
-                            if (x.impliedNeg) imp.push(...(x.impliedNeg()))
-                        }
-                    })
-
-                    return imp
-                }
-
+            
                 const res = exp.data().map(x => {
-                    if (x.op === 'or' && !x.negative) {
+                    if (x.op === 'or') {
                         modified = true
                         return x.data()
                     }
@@ -330,8 +274,6 @@
 
                 return {
                     negative: exp.negative,
-                    impliedPos,
-                    impliedNeg,
                     id: exp.id,
                     op: 'or',
                     data: () => res
@@ -339,42 +281,13 @@
             }
 
             const collapseAnd = (exp) => {
-                if (exp.op !== 'and' || !canFlatten) return undefined
+                if (exp.op !== 'and') return undefined
 
                 let modified = false
-                
-                
-                const impliedPos = () => {
-                    const imp = []
-                    
-                    exp.data().forEach(x => {
-
-                        if (x.op === 'and' && !x.negative) {
-                            imp.push(x)
-                            if (x.impliedPos) imp.push(...(x.impliedPos()))
-                        }
-                    })
-
-                    return imp
-                }
-
-                const impliedNeg = () => {
-                     const imp = []
-                    
-                    exp.data().forEach(x => {
-
-                        if (x.op === 'and' && x.negative) {
-                            imp.push(x)
-                            if (x.impliedNeg) imp.push(...(x.impliedNeg()))
-                        }
-                    })
-
-                    return imp
-                }
 
                 const res = exp.data().map(x => {
 
-                    if (x.op === 'and' && !x.negative) {
+                    if (x.op === 'and') {
                         modified = true
                         return x.data()
                     }
@@ -385,8 +298,6 @@
 
                 return {
                     negative: exp.negative,
-                    impliedPos,
-                    impliedNeg,
                     id: exp.id,
                     op: 'and',
                     data: () => res
@@ -408,9 +319,7 @@
                     id: exp.id,
                     op: exp.op,
                     negative: exp.negative,
-                    impliedPos: acc.impliedPos,
-                    impliedNeg: acc.impliedNeg,
-                    data: () => acc.data().map(x => compactify(x))
+                    data: () => [...(acc.data())]
                 }
             }
 
@@ -420,12 +329,7 @@
 
             
             if (exp.op) {
-                
-                return {
-                    ...exp,
-                    impliedPos: exp.impliedPos ?? (() => []),
-                    impliedNeg: exp.impliedNeg ?? (() => [])
-                }
+                return exp
             }
             return exp
         }
@@ -481,19 +385,14 @@
                     return undefined
                 }
 
-                return solve(exp, outerAndPositive, outerAndNegative, 1, nesting + 1)
+                return solve(exp, outerAndPositive, outerAndNegative, undefined, nesting + 1)
             }
         }
 
 
-        const limit = 10000
+        const limit = 500000
 
-        // todo: fix memoization to ensure EXP worst-case rather than EXP EXP. lazy tree is EXP, scan should be Poly EXP - every node visited poly times
-        // note: the approach keep it as Np-hard as naive search for inputs, except worst case for this one is impossible practically for SHA-256, making curcuit full-EXP cost, costs full-EXP search;
-        // SAH256 authors would need to hide ALL non-contradictory cases, that's not practically possible (especially for pseudo-uniform) - we are looking only for ONE case.
-        
-        
-        const solve = (exp, outerAndPositive = [], outerAndNegative = [], k = 1, nesting = 0) => {
+        const solve = (exp, outerAndPositive = [], outerAndNegative = [], k = undefined, nesting = 0) => {
             if (!globalCtx.ticks) globalCtx.ticks = 0
             globalCtx.ticks++
 
@@ -520,10 +419,7 @@
             }
             
             const finish = (r) => {
-                memoize(exp, snapPos, snapNeg, k, r, globalCtx.contradiction, globalCtx.contradictions)
-                globalCtx.contraprop = globalCtx.contradictions
-                globalCtx.contradiction = undefined
-                globalCtx.contradictions = []
+                memoize(exp, snapPos, snapNeg, k, r)
                 return r
             }
     
@@ -547,7 +443,7 @@
 
                 const extra = exp.data().filter(x => isSomeVal(x))
                 //console.log(exp)
-                const toSolve = [ ...exp.impliedPos(), ...exp.impliedNeg(), ...exp.data().filter(x => !isSomeVal(x))]
+                const toSolve = [...exp.data().filter(x => !isSomeVal(x))]
 
                 for (x of exp.data()){
                   if (contradicts(x, outerAndPositive, outerAndNegative)) return finish(undefined)
@@ -559,11 +455,11 @@
 
                 const limits = toSolve.map(exp => exp.data().length)
 
-                const toStop = () => {
-                    return positions.every((x, i) => x === limits[i])
-                }
+                //console.log("limits = " + limits + " exp = " + show(exp))
 
                 const solveRest = () => {
+
+                    //console.log(positions)
                     const tryOuterAndPositive = structuredClone(outerAndPositive)
                     const tryOuterAndNegative = structuredClone(outerAndNegative)
 
@@ -594,16 +490,12 @@
                                 result = [...result.filter(dedup), ...res]
 
                             } else {
-                                 
-                                //if (isGenVal(res)) addPos(outerAndPositive, res) 
-                                //else if (isGenNotVal(res)) addNeg(outerAndNegative, res)
-                                
-                                
                                 result = [...result, res]
-                                
+          
                             }                            
 
                         } else {
+                            //console.log("COMBO CONTRA: " + show(x))
                             return i
                         }
                         
@@ -637,62 +529,111 @@
                     const result = solveRest()
 
                     if (result.map) {
+                        //console.log("AND SOLVED: " + show(and(...[...extra, ...result])))
                         return finish(and(...[...extra, ...result]))
                     }
-                    if (toStop() || !incrementAtPosition(result)) break;
+                    if (!incrementAtPosition(result)) break;
 
                 } 
+
+                //console.log("AND CONTRADICTION: " + show(exp))
 
                 return finish(undefined)    
             }
 
             if (exp.op === 'or'){
-                let count = 0
-                for (x of exp.data()) {
-                    const tryOuterAndPositive = structuredClone(outerAndPositive)
-                    const tryOuterAndNegative = structuredClone(outerAndNegative)
+                if (k === undefined) {
+                    //throw " no top and"
+                    return finish(solve(syntheticAnd(exp), outerAndPositive, outerAndNegative, k, nesting + 1))
+                } else {
 
-                    //const solved = checkContradiction(x, tryOuterAndPositive, tryOuterAndNegative, nesting)
-                    const solved = checkContradictionGen(x, tryOuterAndPositive, tryOuterAndNegative, nesting)
-                    if (solved) {
-                        count++
-                        if (count === k) {
+                    const properK = false
+                    if (!properK) {
+                        let count = 0
+                        for (x of exp.data()) {
+                            const tryOuterAndPositive = structuredClone(outerAndPositive)
+                            const tryOuterAndNegative = structuredClone(outerAndNegative)
 
+                            //const solved = checkContradiction(x, tryOuterAndPositive, tryOuterAndNegative, nesting)
+                            const solved = checkContradictionGen(x, tryOuterAndPositive, tryOuterAndNegative, nesting)
+                            if (solved) {
+                                count++
+                                if (count === k) {
+
+                                    tryOuterAndPositive.forEach(x => {if (!outerAndPositive.some(y => x === y)) outerAndPositive.push(x)})
+                                    tryOuterAndNegative.forEach(x => {if (!outerAndNegative.some(y => x === y)) outerAndNegative.push(x)})
+
+                                    return finish(solved)
+                                }
+                            } else {
+                                if (window.ticks < 100) console.log("\n contradiction!!!!!")
+                            }
+                        }
+                        
+                        return finish(undefined)
+                    } else {
+                        const tryOuterAndPositive = structuredClone(outerAndPositive)
+                        const tryOuterAndNegative = structuredClone(outerAndNegative)
+
+                        //const solved = checkContradiction(x, tryOuterAndPositive, tryOuterAndNegative, nesting)
+                        //if (!exp.data()[k - 1]) throw `exp = ${show(exp)}, k = ${k}, data = ${exp.data()}`
+                        const solved = checkContradictionGen(exp.data()[k - 1], tryOuterAndPositive, tryOuterAndNegative, nesting)
+
+                        if (solved) {
                             tryOuterAndPositive.forEach(x => {if (!outerAndPositive.some(y => x === y)) outerAndPositive.push(x)})
                             tryOuterAndNegative.forEach(x => {if (!outerAndNegative.some(y => x === y)) outerAndNegative.push(x)})
 
+                            if (globalCtx.ticks < 100) console.log("\n OR SOLVED: " + show(exp.data()[k - 1]) + " => " + show(solved))
                             return finish(solved)
-                        }
-                    } else {
-                        if (window.ticks < 100) console.log("\n contradiction!!!!!")
-                        globalCtx.contradiction = x
 
-                        if (!globalCtx.contradictions) globalCtx.contradictions = []
-                        globalCtx.contradictions.push(x) //todo track contradictions from subexpressions
-                        globalCtx.contradictions.push(...(globalCtx.contraprop ?? []))
-                        globalCtx.contraprop = []
+                        } else {
+                            if (globalCtx.ticks < 100) console.log("\n contradiction!!!!!" + show(exp.data()[k - 1]))
+                        }
+
                     }
+
+                    
+
                 }
+
+
                 
                 return finish(undefined)
             } 
         }
 
-        const evaluate = (exp, input) => {
-            if (!exp.op) return input[exp - 1]
+        const evaluate = (exp, input, memo = {}) => {
+
+            const makeKey = (exp) => {
+                return `${getid(exp)} : ${exp.negative ? "N" : "P"} : ${exp.op}sssssss`
+            }
+            const finish = (res) => {
+                memo[makeKey(exp)] = res
+                return res
+            }
+
+            if (Object.keys(memo).length > 100) {
+                console.log(memo)
+                throw "too many calls to evaluate" 
+            }
+
+            if (memo[makeKey[exp]]) return memo[makeKey[exp]]
+
+            if (!exp.op) return finish(input[exp - 1])
             if (exp.op === 'and') {
                 for (x of exp.data()) {
-                    if (evaluate(x, input) === false) return false
+                    if (evaluate(x, input, memo) === false) return finish(false)
                 }
-                return true
+                return finish(true)
             }
+
             if (exp.op === 'or') {
                 for (x of exp.data()) {
-                    if (evaluate(x, input) === true) return true
+                    if (evaluate(x, input, memo) === true) return finish(true)
                 }
-                return false
+                return finish(false)
             }
-            if (exp.op === 'not') return !(evaluate(exp.exp(), input))
+            if (exp.op === 'not') return finish(!(evaluate(exp.exp(), input, memo)))
         }
 
         const show = (exp) => {
@@ -712,9 +653,7 @@
         const a = v(ctx)
         const b = v(ctx)
 
-        const expression = compactify(and( or(not(a), not(b)), or(a, a)))
-
-        console.log("implied = " + expression.impliedPos())
+        const expression = and( or(not(a), not(b)), or(a, a))
 
         const look = p()
         look(show(expression))
@@ -723,17 +662,29 @@
         evalTest(evaluate(expression, [true, true]))
 
         const solveTest = p()
-        solveTest(show(solve(compactify(expression))))
+        console.log("SOLVEDDDDD " + show(solve(expression)) + "\n\n\n\n\n\n\n\n--------\n\n")
+        solveTest(show(solve(expression)))
 
         const input = 30
 
         const ctx2 = {}
         const arrExp = eqArrays(allocateArray(5, ctx2), numberToArray(input, 5))
+
         console.log(show((denot(arrExp))))
 
-        const solution = solve(compactify(denot(arrExp)))
 
-        console.log("solution = " + solutionToNum(solution))
+
+        console.log(show(denot(arrExp)))
+
+        const solution = solve(denot(arrExp))
+
+        
+
+        console.log("SOLVEDDDDD22 " + show(solution))
+
+        
+
+        console.log(solution)
         solveTest(show(solution) + "\n" + solutionToNum(solution) + " should be " + input)
 
     </script>
@@ -1355,7 +1306,9 @@ const formAst = () => {
 
     const ctx3 = {}
     console.log("solve sha...")
-    console.log(solve(denot(compactify(sha256DSL8(1, ctx3).hash[0]))))
+    const exp = denot(sha256DSL8(1, ctx3).hash[0])
+    //console.log("evaluated = " + evaluate(exp, numberToArray(2, 8)))
+    console.log(solve(exp))
 
     // todo: enumerate ast nodes to form a DAG,to avoid intermdiate blow up. Node-id become variable.
     // we only open them after contradiction and var-dup passed. This willavoid intermediate blow-up
