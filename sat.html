@@ -210,7 +210,7 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
             return {
                 synthetic: true,
                 negative: exp.negative,
-                op: "and",
+                op: "or",
                 id: exp.id ?? exp,
                 data : () => [exp]
             }
@@ -464,7 +464,7 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
 
                 const extra = exp.data().filter(x => isSomeVal(x))
                 //console.log(exp)
-                const toSolve = [...exp.data().filter(x => !isSomeVal(x))]
+                const toSolve = exp.data().filter(x => !isSomeVal(x)).map(x => x.op === 'and' ? syntheticOr(x) : x)
 
                 for (x of exp.data()){
                   if (contradicts(x, outerAndPositive, outerAndNegative)) return finish(undefined)
@@ -564,54 +564,34 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
 
             if (exp.op === 'or'){
                 if (k === undefined) {
-                    //throw " no top and"
                     return finish(solve(syntheticAnd(exp), outerAndPositive, outerAndNegative, k, nesting + 1))
                 } else {
 
-                    const properK = false
-                    if (!properK) {
-                        let count = 0
-                        for (x of exp.data()) {
-                            const tryOuterAndPositive = structuredClone(outerAndPositive)
-                            const tryOuterAndNegative = structuredClone(outerAndNegative)
+                    const properK = true
+                    
+                    const tryOuterAndPositive = structuredClone(outerAndPositive)
+                    const tryOuterAndNegative = structuredClone(outerAndNegative)
 
-                            //const solved = checkContradiction(x, tryOuterAndPositive, tryOuterAndNegative, nesting)
-                            const solved = checkContradictionGen(x, tryOuterAndPositive, tryOuterAndNegative, nesting)
-                            if (solved) {
-                                count++
-                                if (count === k) {
+                    //const solved = checkContradiction(x, tryOuterAndPositive, tryOuterAndNegative, nesting)
+                    //if (!exp.data()[k - 1]) throw `exp = ${show(exp)}, k = ${k}, data = ${exp.data()}`
 
-                                    tryOuterAndPositive.forEach(x => {if (!outerAndPositive.some(y => x === y)) outerAndPositive.push(x)})
-                                    tryOuterAndNegative.forEach(x => {if (!outerAndNegative.some(y => x === y)) outerAndNegative.push(x)})
+                    const child = exp.data()[k - 1]
+                    const wrapped = child.op === 'or' ? syntheticAnd(child) : child
 
-                                    return finish(solved)
-                                }
-                            } else {
-                                if (window.ticks < 100) console.log("\n contradiction!!!!!")
-                            }
-                        }
-                        
-                        return finish(undefined)
+                    const solved = checkContradictionGen(wrapped, tryOuterAndPositive, tryOuterAndNegative, nesting)
+
+                    if (solved) {
+                        tryOuterAndPositive.forEach(x => {if (!outerAndPositive.some(y => x === y)) outerAndPositive.push(x)})
+                        tryOuterAndNegative.forEach(x => {if (!outerAndNegative.some(y => x === y)) outerAndNegative.push(x)})
+
+                        //if (globalCtx.ticks < 100) console.log("\n OR SOLVED: " + show(exp.data()[k - 1]) + " => " + show(solved))
+                        return finish(solved)
+
                     } else {
-                        const tryOuterAndPositive = structuredClone(outerAndPositive)
-                        const tryOuterAndNegative = structuredClone(outerAndNegative)
-
-                        //const solved = checkContradiction(x, tryOuterAndPositive, tryOuterAndNegative, nesting)
-                        //if (!exp.data()[k - 1]) throw `exp = ${show(exp)}, k = ${k}, data = ${exp.data()}`
-                        const solved = checkContradictionGen(exp.data()[k - 1], tryOuterAndPositive, tryOuterAndNegative, nesting)
-
-                        if (solved) {
-                            tryOuterAndPositive.forEach(x => {if (!outerAndPositive.some(y => x === y)) outerAndPositive.push(x)})
-                            tryOuterAndNegative.forEach(x => {if (!outerAndNegative.some(y => x === y)) outerAndNegative.push(x)})
-
-                            if (globalCtx.ticks < 100) console.log("\n OR SOLVED: " + show(exp.data()[k - 1]) + " => " + show(solved))
-                            return finish(solved)
-
-                        } else {
-                            if (globalCtx.ticks < 100) console.log("\n contradiction!!!!!" + show(exp.data()[k - 1]))
-                        }
-
+                        //if (globalCtx.ticks < 100) console.log("\n contradiction!!!!!" + show(exp.data()[k - 1]))
                     }
+
+                    
 
                     
 
@@ -683,7 +663,7 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
         evalTest(evaluate(expression, [true, true]))
 
         const solveTest = p()
-        console.log("SOLVEDDDDD " + show(solve(expression)) + "\n\n\n\n\n\n\n\n--------\n\n")
+        //console.log("SOLVEDDDDD " + show(solve(expression)) + "\n\n\n\n\n\n\n\n--------\n\n")
         solveTest(show(solve(expression)))
 
         const input = 30
@@ -1332,7 +1312,7 @@ const formAst = () => {
     console.log("solve sha...")
     const exp = denot(sha256DSL8(1, ctx3).hash[0])
     //console.log("evaluated = " + evaluate(exp, numberToArray(2, 8)))
-    //console.log(solve(exp))
+    console.log(solve(exp))
 
     // todo: enumerate ast nodes to form a DAG,to avoid intermdiate blow up. Node-id become variable.
     // we only open them after contradiction and var-dup passed. This willavoid intermediate blow-up
