@@ -438,7 +438,7 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
 
             if (mm.hit) {
                 if (mm.value !== undefined) {
-                    if (exp.op && !outerAndPositive.includes(exp.id)) outerAndPositive.push(exp.id)
+                    if (exp.op && exp.op !== 'not' && !outerAndPositive.includes(exp.id)) outerAndPositive.push(exp.id) //todo do we need this at all?
                     replayResult(mm.value, outerAndPositive, outerAndNegative)
                 }
                 return mm.value
