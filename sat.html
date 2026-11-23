@@ -556,10 +556,13 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
                     const result = solveRest()
 
                     if (result.map) {
-                        //console.log("AND SOLVED: " + show(and(...[...extra, ...result])))
-                        return finish(and(...[...extra, ...result]))
-                    }
-                    if (!incrementAtPosition(result)) break;
+                        //console.log("AND SOLVED: " + show(and(...[...extra, ...result])))\
+
+                        //TODO yield finish!!
+                        //TODO ncrementAtPosition(0)
+                        return finish(and(...[...extra, ...result])) 
+                    }//todo ELSE
+                    if (!incrementAtPosition(result)) break; 
 
                 } 
 
