@@ -98,6 +98,11 @@
             return num.toString(2).padStart(k, '0').split('').map(x => x === '1' ? one(templateVar) : zero(templateVar))
         }
 
+        const numberToInput = (num, k, templateVar = 1) => {
+            return num.toString(2).padStart(k, '0').split('').map(x => x === '1')
+        }
+
+
         const solutionToNum = (exp, n) => {
             if (!exp) return undefined
             const bitarray = []
@@ -793,12 +798,6 @@ for (let trial = 0; trial < 1000; trial++) {
   const clause = () => or(lit(), lit())
   const exp = and(clause(), clause(), clause())
   const expDenot = denot(exp)
-  for (let mask = 0; mask < 8; mask++) {
-    const input = []
-    for (let i = 0; i < 3; i++) input[i] = ((mask >> (2-i)) & 1) === 1
-    //console.log("mask", mask, "input", input, "evaluate =", evaluate(expDenot, input))
-  }
-  //console.log("direct [false,false,false] =", evaluate(expDenot, [false,false,false]))
 
   globalCtx.memo = {}; globalCtx.hits = 0; globalCtx.ticks = 0
   let sol
@@ -1195,7 +1194,7 @@ const formAst = () => {
 
         let H = H_HEX.map((n) => numberToArray(n, 32, templateVar));
 
-        const K = K_HEX.map((n) => numberToArray(n, 32, templateVar));
+        const K = K_HEX.map((n) => numberToArray(parseInt(n, 16), 32, templateVar))
 
 
         // ---------- Process each 512-bit chunk ----------
@@ -1481,11 +1480,173 @@ const formAst = () => {
 
     }
 
-    const ctx3 = {}
+
+        const ctx3 = {}
     console.log("solve sha...")
-    const exp = denot(sha256DSL8(1, ctx3).hash[0])
-    //console.log("evaluated = " + evaluate(exp, numberToArray(2, 8)))
-    //console.log(solve(exp))
+    const exp = denot(not(sha256DSL8(1, ctx3).hash[0]))
+
+    function quickSolverTest(rounds) {
+  // 1. Ground truth by evaluate
+  for (const msg of [0, 1]) {
+    const ctx = {}; globalCtx = ctx
+    const { hash } = sha256DSL8(1, ctx, 1, rounds)
+    const got = evaluate(hash[0], numberToInput(msg, 1))
+    console.log(`rounds=${rounds} msg=${msg} evaluate hash[0]=${got}`)
+  }
+
+  // 2. Solver: hash[0] should be SAT iff some msg gave true above
+  {
+    const ctx = {}; globalCtx = ctx
+    const { hash } = sha256DSL8(1, ctx, 1, rounds)
+    const exp = denot(hash[0])
+    globalCtx.memo = {}; globalCtx.ticks = 0
+    const sol = solve(exp, [], [], undefined, 0)
+    console.log(`rounds=${rounds} solve(hash[0]) =`, sol === undefined ? "UNSAT" : show(sol))
+  }
+
+  // 3. Solver: not(hash[0]) should be SAT iff some msg gave false above
+  {
+    const ctx = {}; globalCtx = ctx
+    const { hash } = sha256DSL8(1, ctx, 1, rounds)
+    const exp = denot(not(hash[0])) // denot OUTSIDE the not, correct
+    globalCtx.memo = {}; globalCtx.ticks = 0
+    const sol = solve(exp, [], [], undefined, 0)
+    console.log(`rounds=${rounds} solve(not(hash[0])) =`, sol === undefined ? "UNSAT" : show(sol))
+  }
+}
+
+quickSolverTest(1)
+quickSolverTest(2)
+
+
+    console.log("evaluated = " + evaluate(exp, numberToInput(2, 4)))
+
+
+    console.log(solve(exp))
+
+        //throw "err"
+
+    return
+
+
+
+    function assertHash(L, msgNum, expectedHashByte, label) {
+        const ctx = {}
+        const { messageVars, hash } = sha256DSL8(L, ctx)
+        const input = numberToInput(msgNum, L)
+        // check all 8 bits, not just hash[0]
+        for (let i = 0; i < 8; i++) {
+            const exp = hash[i]
+            const got = evaluate(exp, input)
+            const want = ((expectedHashByte >> (7 - i)) & 1) === 1
+            console.assert(got === want,
+            `${label} L=${L} msg=${msgNum} hash[${i}] got=${got} want=${want}`)
+        }
+        console.log(`ok ${label} L=${L} msg=${msgNum} -> hash=0x${expectedHashByte.toString(16).padStart(2,'0')}`)
+    }
+
+
+
+    // L=1: 1 message bit
+    assertHash(1, 0, 0x28, "L1-zero")
+    assertHash(1, 1, 0xD1, "L1-one")
+
+    // L=2
+    assertHash(2, 0, 0xCE, "L2-0")   // 00 -> 11001110, hash[0]=true
+    assertHash(2, 1, 0x0C, "L2-1")   // 01 -> 00001100, hash[0]=false
+    assertHash(2, 2, 0xFC, "L2-2")   // 10 -> 11111100, hash[0]=true
+    assertHash(2, 3, 0x19, "L2-3")   // 11 -> 00011001, hash[0]=false (from brute set)
+
+    // L=3
+assertHash(3, 0, 0x18) // 000 -> hash[0]=false
+assertHash(3, 1, 0x3E) // 001 -> hash[0]=false  <- this is where 0x3E belongs
+assertHash(3, 2, 0xE3) // 010 -> hash[0]=true
+assertHash(3, 3, 0x1C)
+assertHash(3, 4, 0x28)
+assertHash(3, 5, 0x4A) // 101 -> your screenshot, correct
+assertHash(3, 6, 0x90)
+assertHash(3, 7, 0x10)
+
+    // L=4
+    assertHash(4, 0, 0xF8, "L4-0")   // hash[0]=true
+    assertHash(4, 2, 0x3D, "L4-2")   // hash[0]=false
+
+    // L=5
+    assertHash(5, 0, 0xA7, "L5-0")   // hash[0]=true
+    assertHash(5, 2, 0x6E, "L5-2")   // hash[0]=false
+
+    // L=6
+    assertHash(6, 0, 0xB6, "L6-0")   // hash[0]=true
+    assertHash(6, 2, 0x7A, "L6-2")   // hash[0]=false
+
+    // L=7
+    assertHash(7, 0, 0xF6, "L7-0")   // hash[0]=true
+    assertHash(7, 1, 0x3A, "L7-1")   // hash[0]=false
+
+    // L=8
+    assertHash(8, 0,   0x01, "L8-0")   // hash[0]=false
+    assertHash(8, 1,   0x3D, "L8-1")   // hash[0]=false
+    assertHash(8, 2,   0xC8, "L8-2")   // hash[0]=true
+
+    assertHash(8, 200, 0x44)   // 11001000 -> hash[0]=false
+    assertHash(8, 255, 0xA0)   // 11111111 -> hash[0]=true
+    assertHash(16, 0xABCD, 0x6F)
+    assertHash(16, 0x1234, 0xE5)
+
+
+
+
+    function stringToInput(s) {
+        const out = []
+        for (let i = 0; i < s.length; i++) {
+            const code = s.charCodeAt(i)
+            for (let b = 7; b >= 0; b--) out.push(((code >> b) & 1) === 1)
+        }
+        return out
+    }
+
+    function stringToInput(s) {
+  const out = []
+  for (let i = 0; i < s.length; i++) {
+    const code = s.charCodeAt(i)
+    for (let b = 7; b >= 0; b--) out.push(((code >> b) & 1) === 1)
+  }
+  return out
+}
+
+function assertSha256Word0(str, expectedHex, label) {
+  const input = stringToInput(str)
+  const ctx = {}
+  globalCtx = ctx
+  console.time(`build ${label}`)
+  const { hash } = sha256DSL(input.length, ctx)
+  console.timeEnd(`build ${label}`)
+
+  const evalInput = input.length === 0 ? [false] : input
+  const wantWord0 = expectedHex.slice(0, 8) // first 8 hex chars = 32 bits
+
+  for (let b = 0; b < 32; b++) {
+    console.time(`bit ${b}`)
+    const got = evaluate(hash[b], evalInput)
+    console.timeEnd(`bit ${b}`)
+    const hexDigit = parseInt(expectedHex[Math.floor(b / 4)], 16)
+    const want = ((hexDigit >> (3 - (b % 4))) & 1) === 1
+    console.log(`${label} bit=${b} got=${got} want=${want}`)
+    if (got !== want) {
+      console.log(`❌ FAIL ${label} at bit ${b}, stopping`)
+      return false
+    }
+  }
+  console.log(`✅ ok word0 ${label} "${str}" -> ${wantWord0}`)
+  return true
+}
+
+assertSha256Word0("", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "empty")
+
+
+
+
+
 
     // todo: enumerate ast nodes to form a DAG,to avoid intermdiate blow up. Node-id become variable.
     // we only open them after contradiction and var-dup passed. This willavoid intermediate blow-up
