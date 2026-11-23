@@ -1518,6 +1518,27 @@ const formAst = () => {
 quickSolverTest(1)
 quickSolverTest(2)
 
+//THE BUG REPRODUCTION:
+{
+
+console.log("BUG::::")
+  const ctx = {}; globalCtx = ctx
+  const a = v(ctx), b = v(ctx), c = v(ctx)   // $1, $2, $3 — create leaves first
+
+  const A = or(
+    and( or(b, not(a)), or(c, not(a)) ),  // C: both ors can be satisfied via -$1 alone
+    and(a, b)                              // D: needs $2
+  )
+  const B = and( not(b), not(c) )           // needs -$2 AND -$3
+
+  const top = and(A, B)
+
+  console.log("brute 1=F,2=F,3=F:", evaluate(top, [false, false, false])) // true
+  globalCtx.memo = {}
+  console.log("solve:", show(solve(denot(top)))) // expect SAT, gets UNSAT
+  console.log("::::BUG")
+}
+
 
     console.log("evaluated = " + evaluate(exp, numberToInput(2, 4)))
 
