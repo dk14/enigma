@@ -441,6 +441,7 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
             
             const finish = (r) => {
                 memoize(exp, snapPos, snapNeg, k, r)
+                replayResult(r, outerAndPositive, outerAndNegative)
                 return r
             }
     
@@ -603,39 +604,77 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
             } 
         }
 
-        const evaluate = (exp, input, memo = {}) => {
+        function evaluate(root, input) {
+  const memo = new Map()
+  const valStack = []
+  // task: { e, done, n, op }
+  const stack = [{ e: root, done: false, n: 0, op: null }]
 
-            const makeKey = (exp) => {
-                return `${getid(exp)} : ${exp.negative ? "N" : "P"} : ${exp.op}sssssss`
-            }
-            const finish = (res) => {
-                memo[makeKey(exp)] = res
-                return res
-            }
+  const keyOf = (e) => {
+    if (typeof e !== 'object' || e === null) return 'v:' + e
+    // same id can be re-created by denot(), so key by id + shape,
+    // not by object identity
+    return e.id + '|' + e.op + '|' + (e.negative ? 'N' : 'P') + '|' + (e.synthetic ? 'S' : '')
+  }
 
-            if (Object.keys(memo).length > 100) {
-                console.log(memo)
-                throw "too many calls to evaluate" 
-            }
+  while (true) {
+    if (stack.length === 0) break
 
-            if (memo[makeKey[exp]]) return memo[makeKey[exp]]
+    const task = stack.pop()
+    const e = task.e
 
-            if (!exp.op) return finish(input[exp - 1])
-            if (exp.op === 'and') {
-                for (x of exp.data()) {
-                    if (evaluate(x, input, memo) === false) return finish(false)
-                }
-                return finish(true)
-            }
+    // --- post-order step: children already evaluated ---
+    if (task.done) {
+      const n = task.n
+      let v
+      if (task.op === 'and') {
+        v = true
+        for (let i = 0; i < n; i++) v = v && valStack.pop()
+        // valStack.pop() is reverse order, but && is commutative
+      } else if (task.op === 'or') {
+        v = false
+        for (let i = 0; i < n; i++) v = v || valStack.pop()
+      } else if (task.op === 'not') {
+        v = !valStack.pop()
+      }
+      memo.set(keyOf(e), v)
+      valStack.push(v)
+      continue
+    }
 
-            if (exp.op === 'or') {
-                for (x of exp.data()) {
-                    if (evaluate(x, input, memo) === true) return finish(true)
-                }
-                return finish(false)
-            }
-            if (exp.op === 'not') return finish(!(evaluate(exp.exp(), input, memo)))
-        }
+    // --- pre-order step ---
+    const key = keyOf(e)
+    if (memo.has(key)) {
+      valStack.push(memo.get(key))
+      continue
+    }
+
+    // leaf: number, e.g. 1
+    if (typeof e !== 'object' || e === null) {
+      const v = !!input[e - 1]
+      memo.set(key, v)
+      valStack.push(v)
+      continue
+    }
+
+    // not-node: one child in e.exp()
+    if (e.op === 'not') {
+      stack.push({ e, done: true, n: 1, op: 'not' })
+      stack.push({ e: e.exp(), done: false, n: 0, op: null })
+      continue
+    }
+
+    // and/or-node: children in e.data()
+    // call data() exactly once per id, memo saves us from re-expansion
+    const children = e.data()
+    stack.push({ e, done: true, n: children.length, op: e.op })
+    for (let i = children.length - 1; i >= 0; i--) {
+      stack.push({ e: children[i], done: false, n: 0, op: null })
+    }
+  }
+
+  return valStack.pop()
+}
 
         const show = (exp) => {
             if (!exp) return "not found"
@@ -644,6 +683,97 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
             if (exp.op === 'or') return `(${exp.data().map(x => show(x)).join(' + ')})`
             if (exp.op === 'not') return ` -(${show(exp.exp())}) `
         }
+    </script>
+    <script>
+        // ---------- brute force check ----------
+function bruteSat(exp, vars) {
+  const n = vars.length
+  for (let mask = 0; mask < (1 << n); mask++) {
+    const input = []
+    for (let i = 0; i < n; i++) input[i] = ((mask >> (n-1-i)) & 1) === 1
+    // evaluate() in your code expects input[exp-1], and memo is buggy, so use fresh memo
+    try { if (evaluate(exp, input, {}) === true) return { sat: true, input } } catch(e) {}
+  }
+  return { sat: false }
+}
+
+function checkOne(name, exp, vars) {
+  const ctxBefore = globalCtx
+  // fresh memo per test, otherwise cross-test pollution hides the bug
+  globalCtx.memo = {}; globalCtx.hits = 0; globalCtx.ticks = 0
+  let sol
+  try { sol = solve(exp, [], [], undefined, 0) } catch(e) { console.log(name, "THREW", e); return }
+  const brute = bruteSat(exp, vars)
+
+  if (sol === undefined) {
+    if (brute.sat) console.log(`❌ ${name} FALSE NEGATIVE: solve=undef but SAT with`, brute.input)
+    else console.log(`✅ ${name} OK UNSAT`)
+    return
+  }
+  // build assignment from solution: solutionToNum style, but check directly
+  // solution is an and(...) of literals, extract them
+  const assign = {}
+  const collect = (e) => {
+    if (!e) return
+    if (!e.op) assign[e] = true
+    else if (e.op === 'not') assign[e.exp()] = false
+    else if (e.op === 'and') e.data().forEach(collect)
+    else if (e.op === 'or') { /* or in solution = node id, ignore */ }
+  }
+  collect(sol)
+  // fill unassigned with false, evaluate
+  const input = vars.map(v => assign[v] === true)
+  // if solution didn't assign a var, try both completions
+  let ok = false
+  for (let mask = 0; mask < (1 << vars.length); mask++) {
+    const inp = vars.map((v,i) => assign[v] !== undefined ? assign[v] : ((mask>>i)&1)===1)
+    try { if (evaluate(exp, inp, {}) === true) { ok = true; break } } catch(e) {}
+  }
+  if (!ok) console.log(`❌ ${name} FALSE POSITIVE: solve returned`, show(sol), "but no completion satisfies")
+  else if (!brute.sat) console.log(`❌ ${name} FALSE POSITIVE: solve SAT but brute UNSAT`)
+  else console.log(`✅ ${name} OK SAT`)
+}
+
+// ---------- concrete small cases ----------
+{
+  const ctx = {}; globalCtx = ctx
+  const a = v(ctx), b = v(ctx), c = v(ctx)
+
+  // UNSAT: all 4 combos of a,b forbidden
+  // (a|b) & (!a|b) & (a|!b) & (!a|!b)
+  const unsat = and(or(a,b), or(not(a), b), or(a, not(b)), or(not(a), not(b)))
+  checkOne("unsat-2var", denot(unsat), [a,b])
+
+  // SAT, but requires learning: (a|b) & (!a)  => must pick b
+  const sat1 = and(or(a,b), not(a))
+  checkOne("sat-requires-b", denot(sat1), [a,b])
+
+  // Shared subexpression, solved twice under different outer context
+  // This is the delta-loss case: first solve learns something, second reuses memo
+  const shared = or(a, b)
+  const shared2 = and(shared, or(not(a), c), or(not(b), not(c)), shared)
+  checkOne("shared-or", denot(shared2), [a,b,c])
+
+  // AND where intermediate learn is not in final result:
+  // (a|b) & (!a|c) & (!b|c) & (!c)  => UNSAT, needs to propagate c=false -> a=false,b=false -> (a|b) fails
+  // If delta (c=false) is lost on replay, solver can claim (a|b) SAT
+  const unsat2 = and(or(a,b), or(not(a), c), or(not(b), c), not(c))
+  checkOne("unsat-propagate-c", denot(unsat2), [a,b,c])
+}
+
+// ---------- fuzz ----------
+{
+  const rnd = (n) => Math.floor(Math.random()*n)
+  for (let trial = 0; trial < 200; trial++) {
+    const ctx = {}; globalCtx = ctx
+    const a = v(ctx), b = v(ctx), c = v(ctx)
+    const vars = [a,b,c]
+    const lit = () => { const vv = vars[rnd(3)]; return Math.random()<0.5 ? vv : not(vv) }
+    const clause = () => or(lit(), lit())
+    const exp = and(clause(), clause(), clause())
+    checkOne("fuzz-"+trial, denot(exp), vars)
+  }
+}
     </script>
  
     <script>
