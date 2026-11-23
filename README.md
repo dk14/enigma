@@ -30,6 +30,8 @@ Security applications:
 >> we don't show total order of programs, absence of shortcuts, and to what extent existing systems are vulnerable. This is matter of future work. What is demonstrated is enough to realize that existing systems and approaches fail to meet the guarantees they claim formally - it rejects existing institutional standards formally (precise math is trivially deducible from code), total order is not needed to show it - any order is sufficient.
 >>
 >> [extra-notes on overall state of Explorer Project](extra-notes.md)
+>>
+>> [chat explaining project to AI](chat.md)
  
 Enigma will be a reference deterministic TRNG for https://doomsdayexplorer.online defense network.
 
