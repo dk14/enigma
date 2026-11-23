@@ -605,76 +605,58 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
         }
 
         function evaluate(root, input) {
-  const memo = new Map()
-  const valStack = []
-  // task: { e, done, n, op }
-  const stack = [{ e: root, done: false, n: 0, op: null }]
-
-  const keyOf = (e) => {
-    if (typeof e !== 'object' || e === null) return 'v:' + e
-    // same id can be re-created by denot(), so key by id + shape,
-    // not by object identity
-    return e.id + '|' + e.op + '|' + (e.negative ? 'N' : 'P') + '|' + (e.synthetic ? 'S' : '')
-  }
-
-  while (true) {
-    if (stack.length === 0) break
-
-    const task = stack.pop()
-    const e = task.e
-
-    // --- post-order step: children already evaluated ---
-    if (task.done) {
-      const n = task.n
-      let v
-      if (task.op === 'and') {
-        v = true
-        for (let i = 0; i < n; i++) v = v && valStack.pop()
-        // valStack.pop() is reverse order, but && is commutative
-      } else if (task.op === 'or') {
-        v = false
-        for (let i = 0; i < n; i++) v = v || valStack.pop()
-      } else if (task.op === 'not') {
-        v = !valStack.pop()
-      }
-      memo.set(keyOf(e), v)
-      valStack.push(v)
-      continue
-    }
-
-    // --- pre-order step ---
-    const key = keyOf(e)
-    if (memo.has(key)) {
-      valStack.push(memo.get(key))
-      continue
-    }
-
-    // leaf: number, e.g. 1
-    if (typeof e !== 'object' || e === null) {
-      const v = !!input[e - 1]
-      memo.set(key, v)
-      valStack.push(v)
-      continue
-    }
-
-    // not-node: one child in e.exp()
-    if (e.op === 'not') {
-      stack.push({ e, done: true, n: 1, op: 'not' })
-      stack.push({ e: e.exp(), done: false, n: 0, op: null })
-      continue
-    }
-
-    // and/or-node: children in e.data()
-    // call data() exactly once per id, memo saves us from re-expansion
-    const children = e.data()
-    stack.push({ e, done: true, n: children.length, op: e.op })
-    for (let i = children.length - 1; i >= 0; i--) {
-      stack.push({ e: children[i], done: false, n: 0, op: null })
-    }
-  }
-
-  return valStack.pop()
-}
+        const memo = new Map()
+        const valStack = []
+        const stack = [{ e: root, done: false, n: 0, op: null }]
+        const keyOf = (e) => {
+            if (typeof e !== 'object' || e === null) return 'v:' + e
+            return e.id + '|' + e.op + '|' + (e.negative ? 'N' : 'P') + '|' + (e.synthetic ? 'S' : '')
+        }
+        while (true) {
+            if (stack.length === 0) break
+            const task = stack.pop()
+            const e = task.e
+            if (task.done) {
+            const n = task.n
+            let v
+            if (task.op === 'and') {
+                v = true
+                for (let i = 0; i < n; i++) {
+                const x = valStack.pop()
+                v = v && x
+                }
+            } else if (task.op === 'or') {
+                v = false
+                for (let i = 0; i < n; i++) {
+                const x = valStack.pop()
+                v = v || x
+                }
+            } else if (task.op === 'not') {
+                v = !valStack.pop()
+            }
+            memo.set(keyOf(e), v)
+            valStack.push(v)
+            continue
+            }
+            const key = keyOf(e)
+            if (memo.has(key)) { valStack.push(memo.get(key)); continue }
+            if (typeof e !== 'object' || e === null) {
+            const v = !!input[e - 1]
+            memo.set(key, v)
+            valStack.push(v)
+            continue
+            }
+            if (e.op === 'not') {
+            stack.push({ e, done: true, n: 1, op: 'not' })
+            stack.push({ e: e.exp(), done: false, n: 0, op: null })
+            continue
+            }
+            const children = e.data()
+            stack.push({ e, done: true, n: children.length, op: e.op })
+            for (let i = children.length - 1; i >= 0; i--) stack.push({ e: children[i], done: false, n: 0, op: null })
+        }
+        return valStack.pop()
+        }
 
         const show = (exp) => {
             if (!exp) return "not found"
@@ -772,6 +754,67 @@ function checkOne(name, exp, vars) {
     const clause = () => or(lit(), lit())
     const exp = and(clause(), clause(), clause())
     checkOne("fuzz-"+trial, denot(exp), vars)
+  }
+
+
+  
+}
+
+{
+
+
+    const ctx = {}; globalCtx = ctx
+    const a = v(ctx), b = v(ctx)
+
+    // or( and(a, not(a)), b )  — first child UNSAT, second child SAT
+    // and( that, b ) should be SAT with b=true
+    const exp = denot(and(
+    or( and(a, not(a)), b ),
+    b
+    ))
+
+    console.log("AI guess 1")
+
+    console.log(show(solve(exp)))
+}
+
+
+console.log("1 fuzz detailed")
+// deterministic, so you can replay the same failure
+let seed = 1
+const rnd = (n) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n }
+
+for (let trial = 0; trial < 1000; trial++) {
+  const ctx = {}; globalCtx = ctx
+  const a = v(ctx), b = v(ctx), c = v(ctx)
+  const vars = [a,b,c]
+  const lit = () => { const vv = vars[rnd(3)]; return Math.random()<0.5 ? vv : not(vv) }
+  // use rnd() for polarity too, or Math.random makes it unreproducible
+  const clause = () => or(lit(), lit())
+  const exp = and(clause(), clause(), clause())
+  const expDenot = denot(exp)
+  for (let mask = 0; mask < 8; mask++) {
+    const input = []
+    for (let i = 0; i < 3; i++) input[i] = ((mask >> (2-i)) & 1) === 1
+    //console.log("mask", mask, "input", input, "evaluate =", evaluate(expDenot, input))
+  }
+  //console.log("direct [false,false,false] =", evaluate(expDenot, [false,false,false]))
+
+  globalCtx.memo = {}; globalCtx.hits = 0; globalCtx.ticks = 0
+  let sol
+  try { sol = solve(expDenot, [], [], undefined, 0) } catch(e) { continue }
+  const brute = bruteSat(expDenot, vars)
+
+  const isFalsePos = sol !== undefined && !brute.sat
+  const isFalseNeg = sol === undefined && brute.sat
+
+  if (isFalsePos || isFalseNeg) {
+    console.log("TRIAL", trial, "SEED", seed)
+    console.log("FAIL", isFalsePos ? "FALSE POS" : "FALSE NEG")
+    console.log("EXP", show(expDenot))
+    console.log("SOL", sol ? show(sol) : sol)
+    console.log("BRUTE", brute)
+    break
   }
 }
     </script>
@@ -1442,7 +1485,7 @@ const formAst = () => {
     console.log("solve sha...")
     const exp = denot(sha256DSL8(1, ctx3).hash[0])
     //console.log("evaluated = " + evaluate(exp, numberToArray(2, 8)))
-    console.log(solve(exp))
+    //console.log(solve(exp))
 
     // todo: enumerate ast nodes to form a DAG,to avoid intermdiate blow up. Node-id become variable.
     // we only open them after contradiction and var-dup passed. This willavoid intermediate blow-up
