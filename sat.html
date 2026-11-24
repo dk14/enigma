@@ -165,7 +165,17 @@ const key = memoKey(exp, posPrefix, negPrefix, k);
 const memoize = (exp, posPrefix, negPrefix, k, result) => {
   if (!globalCtx.memo) globalCtx.memo = {}
   const key = memoKey(exp, posPrefix, negPrefix, k);
-  globalCtx.memo[key] = (result === undefined ? UNDEF : result);
+  if (result === undefined) {
+    globalCtx.memo[key] = UNDEF
+  } else {
+    if (!globalCtx.memo[key]) {
+        globalCtx.memo[key] = [result]
+    } else {
+        globalCtx.memo[key] = [...globalCtx.memo[key], result]
+    }
+
+  }
+  
   return result;
 };
 
@@ -472,9 +482,14 @@ const memoize = (exp, posPrefix, negPrefix, k, result) => {
             if (mm.hit) {
                 if (mm.value !== undefined) {
                     if (exp.op && exp.op !== 'not' && !posPrefix.includes(exp.id)) posPrefix.push(exp.id) //todo do we need this at all?
-                    replayResult(mm.value.result, posPrefix, negPrefix)
+                    for (let v of mm.value) {
+                        yield v
+                    }
+                    return
+                } else {
+                    return undefined
                 }
-                return mm.value
+                
             }
             
             const finish = (r, pos, neg) => {
@@ -482,14 +497,15 @@ const memoize = (exp, posPrefix, negPrefix, k, result) => {
                     memoize(exp, snapPos, snapNeg, k, undefined)
                     return undefined
                 }
-                
+
+                replayResult(r, pos, neg)
                 const res = {
                     result: r,
                     pos: pos,
                     neg, neg
                 }
                 memoize(exp, snapPos, snapNeg, k, res)
-                replayResult(r, posPrefix, negPrefix)
+                
 
                 return res
             }
@@ -558,9 +574,9 @@ const memoize = (exp, posPrefix, negPrefix, k, result) => {
                                     yield newacc
                                 } else {
                                     for (r of res) {
-                                        newacc.result = dedupById([...acc.result, res.result], getid) //todo ensure flatten
-                                        mergeInto(res.pos, newacc.pos)
-                                        mergeInto(res.neg, newacc.neg)
+                                        newacc.result = dedupById([...acc.result, r.result], getid) //todo ensure flatten
+                                        mergeInto(r.pos, newacc.pos)
+                                        mergeInto(r.neg, newacc.neg)
                                         yield newacc
                                     }
                                 }
