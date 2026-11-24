@@ -149,10 +149,10 @@ const memoKey = (exp, pos, neg, k) => {
 
 // at START of solve - return fast if hit
 // returns { hit: true, value } or { hit: false }
-const memoized = (exp, outerAndPositive, outerAndNegative, k) => {
+const memoized = (exp, posPrefix, negPrefix, k) => {
 if (!globalCtx.memo) globalCtx.memo = {}
 if (!globalCtx.hits) globalCtx.hits = 0
-const key = memoKey(exp, outerAndPositive, outerAndNegative, k);
+const key = memoKey(exp, posPrefix, negPrefix, k);
   if (key in globalCtx.memo) {
     const stored = globalCtx.memo[key];
     globalCtx.hits++
@@ -162,9 +162,9 @@ const key = memoKey(exp, outerAndPositive, outerAndNegative, k);
 };
 
 // BEFORE returning result in solve
-const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
+const memoize = (exp, posPrefix, negPrefix, k, result) => {
   if (!globalCtx.memo) globalCtx.memo = {}
-  const key = memoKey(exp, outerAndPositive, outerAndNegative, k);
+  const key = memoKey(exp, posPrefix, negPrefix, k);
   globalCtx.memo[key] = (result === undefined ? UNDEF : result);
   return result;
 };
@@ -189,6 +189,63 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
     }
 
  
+    </script>
+    <script>
+        //streams
+        function* product(gen1, gen2) {
+            let iterator1 = gen1.next();
+            let iterator2 = gen2.next();
+
+            while (!iterator1.done && !iterator2.done) {
+                yield [iterator1.value, iterator2.value];
+
+                iterator1 = gen1.next();
+                iterator2 = gen2.next();
+            }
+        }
+
+
+        const unwrap = (factory) => {
+            const probe = factory()
+            const probed = probe.next()
+            if (probed.done) {
+                return probed.value
+            } else return factory()
+        }
+
+        const wrap = (value) => {
+            function *unit() {
+                yield value
+            }
+            return unit
+        }
+
+        const wrapfinal = (value) => {
+            function *unit() {
+                return value
+            }
+            return unit()
+        }
+
+        // function* empty(){}
+        //function* something(){return 5; yield 6}
+        //console.log(unwrap(() => empty()))
+        //console.log(unwrap(() => something()))
+
+        function dedupById(list, idFunction) {
+            const seenIds = new Set();
+            const result = [];
+
+            for (const element of list) {
+                const id = idFunction(element);
+                if (!seenIds.has(id)) {
+                seenIds.add(id);
+                result.push(element);
+                }
+            }
+
+            return result;
+        }
     </script>
     <script>
 
@@ -220,26 +277,6 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
                 data : () => [exp]
             }
         }
-
-        const makeNode = (op, negative, id, data) => {
-            const opposite = op === 'and' ? 'or' : 'and'
-            const wrapped = data().map(x => {
-                if (!isSomeVal(x) && x.op === op) {
-                return {
-                    synthetic: true,
-                    negative: false,
-                    op: opposite,
-                    id: x.id, //memoization remembers 'op', no collision
-                    data: () => [x]
-                }
-                }
-                return x
-            })
-            return { negative, op, id, data: () => wrapped }
-        }
-
-
-    
 
          const denot = (exp) => { 
             if (exp.op === 'not') {
@@ -393,152 +430,158 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
 
         const contradicts = (exp, pos, neg) => (isGenNotVal(exp) && pos.includes(getid(exp))) || (isGenVal(exp) && neg.includes(getid(exp)))
 
-        const checkContradictionGen = (exp, pos, neg, nesting) => {
-          if (contradicts(exp, pos, neg)) return undefined
-          return solve(exp, pos, neg, 1, nesting + 1)
-        }
-
-        const checkContradiction = (exp, outerAndPositive, outerAndNegative, nesting) => {
-            if (!(isSomeVal(exp))) {
-                return solve(exp, outerAndPositive, outerAndNegative, 1, nesting + 1)
-            } else {
-   
-                if (isNotVal(exp) && outerAndPositive.find(x => getid(exp) === x)) {
-                    return undefined
-                }
-
-                if (isVal(exp) && outerAndNegative.find(x => getid(exp) === x)) {
-                    return undefined
-                }
-
-                return solve(exp, outerAndPositive, outerAndNegative, undefined, nesting + 1)
-            }
-        }
-
-
         const limit = 500000
 
-        const solve = (exp, outerAndPositive = [], outerAndNegative = [], k = undefined, nesting = 0) => {
+        const anyContradicts = (list, pos, neg) => {
+            for (x of res) {
+                if (contradicts(x, tryOuterAndPositive, tryOuterAndNegative)) return false
+                if (isGenVal(x)) addPos(tryOuterAndPositive, x) 
+                else if (isGenNotVal(x)) addNeg(tryOuterAndNegative, x)
+            }
+
+        }
+
+        const solve = (exp) => {
+            const res = unwrap(() => solveG(exp, [], [], undefined, 0))
+            if (res?.map) {
+                return res.next().value
+            } else {
+                return res?.result
+            }
+        }
+        
+
+        function* solveG (exp, posPrefix = [], negPrefix = [], k = undefined, nesting = 0) {
             if (!globalCtx.ticks) globalCtx.ticks = 0
             globalCtx.ticks++
 
             if (globalCtx.ticks > limit) {
                 console.log("\n\n\nk = " + k)
-                console.log("outer negatives = " + outerAndNegative)
-                console.log("outer positives = " + outerAndPositive)
+                console.log("outer negatives = " + negPrefix)
+                console.log("outer positives = " + posPrefix)
 
                 console.log(globalCtx.memo)
                 
                 throw "too many contradictions, over " + limit + ", nesting = " + nesting + ", memo length = " + Object.keys(globalCtx.memo).length + " hits = " + globalCtx.hits
             }
             
-            const snapPos = [...outerAndPositive]
-            const snapNeg = [...outerAndNegative]
+            const snapPos = [...posPrefix]
+            const snapNeg = [...negPrefix]
             const mm = memoized(exp, snapPos, snapNeg, k)
 
             if (mm.hit) {
                 if (mm.value !== undefined) {
-                    if (exp.op && exp.op !== 'not' && !outerAndPositive.includes(exp.id)) outerAndPositive.push(exp.id) //todo do we need this at all?
-                    replayResult(mm.value, outerAndPositive, outerAndNegative)
+                    if (exp.op && exp.op !== 'not' && !posPrefix.includes(exp.id)) posPrefix.push(exp.id) //todo do we need this at all?
+                    replayResult(mm.value.result, posPrefix, negPrefix)
                 }
                 return mm.value
             }
             
-            const finish = (r) => {
-                memoize(exp, snapPos, snapNeg, k, r)
-                replayResult(r, outerAndPositive, outerAndNegative)
-                return r
+            const finish = (r, pos, neg) => {
+                if (!r) {
+                    memoize(exp, snapPos, snapNeg, k, undefined)
+                    return undefined
+                }
+                
+                const res = {
+                    result: r,
+                    pos: pos,
+                    neg, neg
+                }
+                memoize(exp, snapPos, snapNeg, k, res)
+                replayResult(r, posPrefix, negPrefix)
+
+                return res
+            }
+
+            const mergeInto = (from, to) => {
+                from.forEach(x => {if (!to.some(y => x === y)) to.push(x)})
             }
     
             if (!exp.op) { 
-                if (outerAndNegative.some(x => x === exp)) return finish(undefined)
-                outerAndPositive.push(exp)
-                return finish(exp)
+                if (negPrefix.some(x => x === exp)) return finish(undefined)
+                posPrefix.push(exp)
+                return finish(exp, posPrefix, negPrefix)
             }
 
             if (exp.op === 'not') {
                 if (exp.exp().op) throw "needs denot!"
-                if (outerAndPositive.some(x => x === exp.exp())) return finish(undefined)
-                outerAndNegative.push(exp.exp())
-                return finish(exp)
+                if (posPrefix.some(x => x === exp.exp())) return finish(undefined)
+                negPrefix.push(exp.exp())
+                return finish(exp, posPrefix, negPrefix)
             }
 
  
-            if (contradicts(exp, outerAndPositive, outerAndNegative)) return finish(undefined)
+            if (contradicts(exp, posPrefix, negPrefix)) return finish(undefined)
 
             if (exp.op === 'and') {
 
                 const extra = exp.data().filter(x => isSomeVal(x))
-                //console.log(exp)
                 const toSolve = exp.data().filter(x => !isSomeVal(x)).map(x => x.op === 'and' ? syntheticOr(x) : x)
 
                 for (x of exp.data()){
-                  if (contradicts(x, outerAndPositive, outerAndNegative)) return finish(undefined)
-                  if (isGenVal(x)) addPos(outerAndPositive, x)
-                  else if (isGenNotVal(x)) addNeg(outerAndNegative, x)
+                  if (contradicts(x, posPrefix, negPrefix)) return finish(undefined)
+                  if (isGenVal(x)) addPos(posPrefix, x)
+                  else if (isGenNotVal(x)) addNeg(negPrefix, x)
                 }
 
                 const positions = toSolve.map(_ => 1)
 
                 const limits = toSolve.map(exp => exp.data().length)
 
-                //console.log("limits = " + limits + " exp = " + show(exp))
+                const solveVariations = () => {
 
-                const solveRest = () => {
+                    let accF = [{ 
+                        result: [],
+                        pos: [...posPrefix],
+                        neg: [...negPrefix]
+                    }]
 
-                    //console.log(positions)
-                    const tryOuterAndPositive = structuredClone(outerAndPositive)
-                    const tryOuterAndNegative = structuredClone(outerAndNegative)
-
-                    let result = []
                     let i = 0
+                    
                     for (x of toSolve) {
-                        
-                        const res = solve(x, tryOuterAndPositive, tryOuterAndNegative, positions[i], nesting + 1)
-
-                        if (res) {  
-
-                            const negativeSet = new Set(tryOuterAndNegative)
-                            const positiveSet = new Set(tryOuterAndPositive)
-                            
-                            if (res.filter) {
-
-                                for (x of res) {
-                                    if (contradicts(x, tryOuterAndPositive, tryOuterAndNegative)) return i
-                                    if (isGenVal(x)) addPos(tryOuterAndPositive, x) 
-                                    else if (isGenNotVal(x)) addNeg(tryOuterAndNegative, x)
+                        const nextGen = function* (acc) {
+                            const res = unwrap(() => solveG(x, acc.pos, acc.neg, positions[i], nesting + 1))
+                            if (res) {  
+                                
+                                //console.log(acc)
+                                const newacc = {
+                                    result: [...acc.result],
+                                    pos: [...acc.pos],
+                                    neg: [...acc.neg]
                                 }
-
-                                const dedup = x => {
-                                  const id = getid(x)
-                                  return isGenVal(x) ? !positiveSet.has(id) : !negativeSet.has(id)
+                                if (!res.next) {
+                                    
+                                    newacc.result = dedupById([...acc.result, res.result], getid) //todo ensure flatten
+                                    mergeInto(res.pos, newacc.pos)
+                                    mergeInto(res.neg, newacc.neg)
+                                    yield newacc
+                                } else {
+                                    for (r of res) {
+                                        newacc.result = dedupById([...acc.result, res.result], getid) //todo ensure flatten
+                                        mergeInto(res.pos, newacc.pos)
+                                        mergeInto(res.neg, newacc.neg)
+                                        yield newacc
+                                    }
                                 }
-  
-                                result = [...result.filter(dedup), ...res]
-
-                            } else {
-                                result = [...result, res]
-          
-                            }                            
-
-                        } else {
-                            //console.log("COMBO CONTRA: " + show(x))
-                            return i
+                            }     
                         }
+
+                        accF = accF.map(x => [...nextGen(x)]).flat()
+                
+                        if (accF.length === 0) return i
                         
                         i++
                     } 
 
-                    tryOuterAndPositive.forEach(x => {if (!outerAndPositive.some(y => x === y)) outerAndPositive.push(x)})
-                    tryOuterAndNegative.forEach(x => {if (!outerAndNegative.some(y => x === y)) outerAndNegative.push(x)})
-
-                    return result 
+                    return accF
 
                 }
 
+
                 let attempts = 0
 
-                const incrementAtPosition = (pos) => {
+                const incrementAtPosition = (pos) => { //todo custom reorderers for decorrelated order
                     let j = pos
                     while (j >= 0) {
                         positions[j]++
@@ -551,119 +594,119 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
 
                 }
 
+                let count = 0
                 while(true) {
                     attempts++
-                    const result = solveRest()
+                    const result = solveVariations()
 
-                    if (result.map) {
-                        //console.log("AND SOLVED: " + show(and(...[...extra, ...result])))\
+                    if (typeof result === 'number') {
+                        if (!incrementAtPosition(result)) break;
+                    } else {
 
-                        //TODO yield finish!!
-                        //TODO ncrementAtPosition(0)
-                        return finish(and(...[...extra, ...result])) 
-                    }//todo ELSE
-                    if (!incrementAtPosition(result)) break; 
+                        for (res of result) {
+                            count++
+                            mergeInto(res.pos, posPrefix)
+                            mergeInto(res.neg, negPrefix)
 
-                } 
+                            //todo yield
+                            return finish(and(...[...extra, ...res.result]), posPrefix, negPrefix) 
+                        }  
 
-                //console.log("AND CONTRADICTION: " + show(exp))
+                        if(!incrementAtPosition(0)) {
+                            if(count === 0) return finish(undefined) ;
+                        } else return
 
-                return finish(undefined)    
+                    }
+
+                }      
             }
 
             if (exp.op === 'or'){
                 if (k === undefined) {
-                    return finish(solve(syntheticAnd(exp), outerAndPositive, outerAndNegative, k, nesting + 1))
+                    return finish(unwrap(() => solveG(syntheticAnd(exp), posPrefix, negPrefix, k, nesting + 1))?.result)
                 } else {
-
-                    const properK = true
-                    
-                    const tryOuterAndPositive = structuredClone(outerAndPositive)
-                    const tryOuterAndNegative = structuredClone(outerAndNegative)
-
-                    //const solved = checkContradiction(x, tryOuterAndPositive, tryOuterAndNegative, nesting)
-                    //if (!exp.data()[k - 1]) throw `exp = ${show(exp)}, k = ${k}, data = ${exp.data()}`
-
                     const child = exp.data()[k - 1]
                     const wrapped = child.op === 'or' ? syntheticAnd(child) : child
 
-                    const solved = checkContradictionGen(wrapped, tryOuterAndPositive, tryOuterAndNegative, nesting)
+                    const solved = (() => {
+                        if (contradicts(wrapped, posPrefix, negPrefix)) return undefined
+                        else return unwrap(() => solveG(wrapped, structuredClone(posPrefix), structuredClone(negPrefix), 1, nesting + 1))
+                    })()
 
                     if (solved) {
-                        tryOuterAndPositive.forEach(x => {if (!outerAndPositive.some(y => x === y)) outerAndPositive.push(x)})
-                        tryOuterAndNegative.forEach(x => {if (!outerAndNegative.some(y => x === y)) outerAndNegative.push(x)})
+                        if (solved.map) {
+                            let count = 0
+                            for (s of solved) {
+                                count++
+                                mergeInto(s.pos, posPrefix)
+                                mergeInto(s.neg, negPrefix)
+                                yield finish(s.result, posPrefix, negPrefix)
+                            }
+                            if (count === 0) return finish(undefined)
+                        } else {
+                            mergeInto(solved.pos, posPrefix)
+                            mergeInto(solved.neg, negPrefix)
+                            return finish(solved.result, posPrefix, negPrefix)
+                        }
 
-                        //if (globalCtx.ticks < 100) console.log("\n OR SOLVED: " + show(exp.data()[k - 1]) + " => " + show(solved))
-                        return finish(solved)
-
-                    } else {
-                        //if (globalCtx.ticks < 100) console.log("\n contradiction!!!!!" + show(exp.data()[k - 1]))
-                    }
-
-                    
-
-                    
-
+                    } else return finish(undefined)
                 }
-
-
                 
-                return finish(undefined)
             } 
         }
 
         function evaluate(root, input) {
-        const memo = new Map()
-        const valStack = []
-        const stack = [{ e: root, done: false, n: 0, op: null }]
-        const keyOf = (e) => {
-            if (typeof e !== 'object' || e === null) return 'v:' + e
-            return e.id + '|' + e.op + '|' + (e.negative ? 'N' : 'P') + '|' + (e.synthetic ? 'S' : '')
-        }
-        while (true) {
-            if (stack.length === 0) break
-            const task = stack.pop()
-            const e = task.e
-            if (task.done) {
-            const n = task.n
-            let v
-            if (task.op === 'and') {
-                v = true
-                for (let i = 0; i < n; i++) {
-                const x = valStack.pop()
-                v = v && x
+            const memo = new Map()
+            const valStack = []
+            const stack = [{ e: root, done: false, n: 0, op: null }]
+            const keyOf = (e) => {
+                if (typeof e !== 'object' || e === null) return 'v:' + e
+                return e.id + '|' + e.op + '|' + (e.negative ? 'N' : 'P') + '|' + (e.synthetic ? 'S' : '')
+            }
+            while (true) {
+                if (stack.length === 0) break
+                const task = stack.pop()
+                const e = task.e
+                if (task.done) {
+                    const n = task.n
+                    let v
+                    if (task.op === 'and') {
+                        v = true
+                        for (let i = 0; i < n; i++) {
+                        const x = valStack.pop()
+                        v = v && x
+                        }
+                    } else if (task.op === 'or') {
+                        v = false
+                        for (let i = 0; i < n; i++) {
+                        const x = valStack.pop()
+                        v = v || x
+                        }
+                    } else if (task.op === 'not') {
+                        v = !valStack.pop()
+                    }
+                    memo.set(keyOf(e), v)
+                    valStack.push(v)
+                    continue
                 }
-            } else if (task.op === 'or') {
-                v = false
-                for (let i = 0; i < n; i++) {
-                const x = valStack.pop()
-                v = v || x
+                const key = keyOf(e)
+                if (memo.has(key)) { valStack.push(memo.get(key)); continue }
+                if (typeof e !== 'object' || e === null) {
+                    const v = !!input[e - 1]
+                    memo.set(key, v)
+                    valStack.push(v)
+                    continue
                 }
-            } else if (task.op === 'not') {
-                v = !valStack.pop()
+                if (e.op === 'not') {
+                    stack.push({ e, done: true, n: 1, op: 'not' })
+                    stack.push({ e: e.exp(), done: false, n: 0, op: null })
+                    continue
+                }
+                const children = e.data()
+                stack.push({ e, done: true, n: children.length, op: e.op })
+                for (let i = children.length - 1; i >= 0; i--) stack.push({ e: children[i], done: false, n: 0, op: null })
             }
-            memo.set(keyOf(e), v)
-            valStack.push(v)
-            continue
-            }
-            const key = keyOf(e)
-            if (memo.has(key)) { valStack.push(memo.get(key)); continue }
-            if (typeof e !== 'object' || e === null) {
-            const v = !!input[e - 1]
-            memo.set(key, v)
-            valStack.push(v)
-            continue
-            }
-            if (e.op === 'not') {
-            stack.push({ e, done: true, n: 1, op: 'not' })
-            stack.push({ e: e.exp(), done: false, n: 0, op: null })
-            continue
-            }
-            const children = e.data()
-            stack.push({ e, done: true, n: children.length, op: e.op })
-            for (let i = children.length - 1; i >= 0; i--) stack.push({ e: children[i], done: false, n: 0, op: null })
-        }
-        return valStack.pop()
+            return valStack.pop()
         }
 
         const show = (exp) => {
@@ -675,6 +718,7 @@ const memoize = (exp, outerAndPositive, outerAndNegative, k, result) => {
         }
     </script>
     <script>
+        //throw "later"
         // ---------- brute force check ----------
 function bruteSat(exp, vars) {
   const n = vars.length
@@ -857,13 +901,6 @@ for (let trial = 0; trial < 1000; trial++) {
 
         const solution = solve(denot(arrExp))
 
-        
-
-        console.log("SOLVEDDDDD22 " + show(solution))
-
-        
-
-        console.log(solution)
         solveTest(show(solution) + "\n" + solutionToNum(solution) + " should be " + input)
 
     </script>
@@ -1485,8 +1522,10 @@ const formAst = () => {
 
 
         const ctx3 = {}
+        
     console.log("solve sha...")
     const exp = denot(not(sha256DSL8(1, ctx3).hash[0]))
+    //throw "later"
 
     function quickSolverTest(rounds) {
   // 1. Ground truth by evaluate
