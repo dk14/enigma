@@ -654,7 +654,7 @@
                         }
 
                         
-                        //todo: return final result as iterator
+                        //todo: return final result as iterator make js flattener
                         accF = accF.map(x => [...nextGen(x)]).flat()
                 
                         if (accF.length === 0) return i
@@ -668,7 +668,6 @@
 
                 }
 
-                //todo: last combo is skipped
                 const incrementAtPosition = (pos) => { //todo custom reorderers for decorrelated order
                     if (positions.length === 0) return false
                     let j = pos
