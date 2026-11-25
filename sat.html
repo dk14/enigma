@@ -264,6 +264,16 @@
             }
         }
 
+        const wrapexception = (f) => {
+            let res = undefined
+            try {
+                res = f()
+            } catch (e) {
+                if (typeof result === 'number') return i
+            }
+            return res
+        }
+
 
         const unwrap = (factory) => {
             const probe = factory()
@@ -286,6 +296,13 @@
             }
             return unit()
         }
+
+        //applicative functor
+        const flat = (g1, g2) => (function*() {
+            for (const v of g1()) {
+                yield* g2(v);
+            }
+        })
 
         // function* empty(){}
         //function* something(){return 5; yield 6}
@@ -490,7 +507,7 @@
 
         const contradicts = (exp, pos, neg) => (isGenNotVal(exp) && pos.includes(getid(exp))) || (isGenVal(exp) && neg.includes(getid(exp)))
 
-        const limit = 500000
+        const limit = 10000
 
         const anyContradicts = (list, pos, neg) => {
             for (x of res) {
@@ -501,17 +518,11 @@
         }
 
         const solve = (exp) => {
-            const res = unwrap(() => solveG(exp, [], [], undefined, 0))
-            if (res?.next) {
-                return res.next().value.result
-            } else {
-                return res?.result
-            }
+            return solveG(exp, [], [], undefined, 0).next().value?.result
         }
         
 
-        function* solveG (exp, posPrefix = [], negPrefix = [], k = undefined, nesting = 0) {
-            if (!globalCtx.ticks) globalCtx.ticks = 0
+        const progressTicks = (posPrefix, negPrefix, k, nesting, extra) => {
             globalCtx.ticks++
 
             if (globalCtx.ticks > limit) {
@@ -520,9 +531,19 @@
                 console.log("outer positives = " + posPrefix)
 
                 console.log(globalCtx.memo)
+
+                console.log(extra ?? "")
                 
                 throw "too many contradictions, over " + limit + ", nesting = " + nesting + ", memo length = " + Object.keys(globalCtx.memo).length + " hits = " + globalCtx.hits
             }
+
+        }
+
+        function* solveG (exp, posPrefix = [], negPrefix = [], k = undefined, nesting = 0) {
+            if (!globalCtx.ticks) globalCtx.ticks = 0
+            
+            progressTicks(posPrefix, negPrefix, k, nesting)
+            //if (globalCtx.memo && globalCtx.memo.length > 1000) globalCtx.memo = {}
 
             
             
@@ -551,7 +572,6 @@
                     return undefined
                 }
 
-                replayResult(r, pos, neg)
                 const res = {
                     result: r,
                     pos,
@@ -563,13 +583,8 @@
                 return res
             }
 
-            const finishall = (r, pos, neg, count) => {
-                const toReturn = finish(r, pos, neg, count)
-                finishMemoize(exp, snapPos, snapNeg, k)
-                if (r !== undefined) {
-                    return toReturn
-                }
-                
+            const finishall = (r) => {
+                finishMemoize(exp, snapPos, snapNeg, k)  
             }
 
             const mergeInto = (from, to) => {
@@ -579,14 +594,18 @@
             if (!exp.op) { 
                 if (negPrefix.some(x => x === exp)) return finish(undefined)
                 posPrefix.push(exp)
-                return finish(exp, posPrefix, negPrefix, 0)
+                yield finish(exp, [...posPrefix], [...negPrefix], 0)
+                finishall()
+                return
             }
 
             if (exp.op === 'not') {
                 if (exp.exp().op) throw "needs denot!"
                 if (posPrefix.some(x => x === exp.exp())) return finish(undefined)
                 negPrefix.push(exp.exp())
-                return finish(exp, posPrefix, negPrefix, 0)
+                yield finish(exp, [...posPrefix], [...negPrefix], 0)
+                finishall()
+                return
             }
 
  
@@ -597,7 +616,7 @@
                 const extra = exp.data().filter(x => isSomeVal(x))
                 const toSolve = exp.data().filter(x => !isSomeVal(x)).map(x => x.op === 'and' ? syntheticOr(x) : x)
 
-                for (x of exp.data()){
+                for (x of exp.data()) {
                   if (contradicts(x, posPrefix, negPrefix)) return finish(undefined)
                   if (isGenVal(x)) addPos(posPrefix, x)
                   else if (isGenNotVal(x)) addNeg(negPrefix, x)
@@ -617,31 +636,25 @@
 
                     let i = 0
                     
-                    for (x of toSolve) {
+                    for (let x of toSolve) {
+
                         const nextGen = function* (acc) {
-                            const res = unwrap(() => solveG(x, acc.pos, acc.neg, positions[i], nesting + 1))
-                            if (res) {  
-                            
-                                if (!res.next) {
-                                    const newacc = { result: [...acc.result], pos: [...acc.pos], neg: [...acc.neg] }
-                                    
-                                    newacc.result = dedupById([...acc.result, res.result], getid) //todo ensure flatten
-                                    mergeInto(res.pos, newacc.pos)
-                                    mergeInto(res.neg, newacc.neg)
-                                    yield newacc
-                                } else {
-                                    
-                                    for (r of res) {
-                                        const newacc = { result: [...acc.result], pos: [...acc.pos], neg: [...acc.neg] }
-                                        newacc.result = dedupById([...acc.result, r.result], getid) //todo ensure flatten
-                                        mergeInto(r.pos, newacc.pos)
-                                        mergeInto(r.neg, newacc.neg)
-                                        yield newacc
-                                    }
-                                }
-                            }     
+                            const res = solveG(x, [...acc.pos], [...acc.neg], positions[i], nesting + 1)
+                                             
+                            let count = 0
+                            for (r of res) {
+                                count++
+                                const newacc = { result: [...acc.result], pos: [...acc.pos], neg: [...acc.neg] }
+                                newacc.result = dedupById([...acc.result, r.result], getid) //todo ensure flatten and proper dedup
+                                mergeInto(r.pos, newacc.pos)
+                                mergeInto(r.neg, newacc.neg)
+                                yield newacc
+                            }
+                            //if (count === 0) throw i                          
                         }
 
+                        
+                        //todo: return final result as iterator
                         accF = accF.map(x => [...nextGen(x)]).flat()
                 
                         if (accF.length === 0) return i
@@ -649,14 +662,15 @@
                         i++
                     } 
 
+                    console.log(accF.length)
+
                     return accF
 
                 }
 
-
-                let attempts = 0
-
+                //todo: last combo is skipped
                 const incrementAtPosition = (pos) => { //todo custom reorderers for decorrelated order
+                    if (positions.length === 0) return false
                     let j = pos
                     while (j >= 0) {
                         positions[j]++
@@ -666,29 +680,34 @@
                         } else return true
                     }
                     return false
-
                 }
 
-                let count = 0
+                let attempts = 0
+                
                 while(true) {
                     attempts++
                     const result = solveVariations()
 
                     if (typeof result === 'number') {
+                        if (globalCtx.bug) console.log("fail " + result + " at " + positions)
                         if (!incrementAtPosition(result)) break;
                     } else {
 
-                        for (res of result) {
-                            count++
+                        let count = 0
 
+                        for (let res of result) {
+                            count++
                             const resexp = and(...[...extra, ...res.result])
-                            //todo yield
-                            return finishall(resexp, res.pos, res.neg, count) 
+                            yield finish(resexp, [...res.pos], [...res.neg], count) 
                         }
 
-                        if(!incrementAtPosition(0)) {
+
+                        if(!incrementAtPosition(positions.length - 1)) {
+                           
                             if(count === 0) {
-                                return finish(undefined)
+                                finish(undefined)
+                                finishall()
+                                return
                             } else {
                                 finishall()
                                 return
@@ -701,36 +720,43 @@
 
             if (exp.op === 'or'){
                 if (k === undefined) {
-                    return finish(unwrap(() => solveG(syntheticAnd(exp), posPrefix, negPrefix, k, nesting + 1))?.result, posPrefix, negPrefix, 0)
+                    const solved = solveG(syntheticAnd(exp), [...posPrefix], [...negPrefix], k, nesting + 1)
+                    for (s of solved) {
+                        yield finish(s, [...posPrefix], [...negPrefix])
+                    }
+                    finishall()
+                    return
                 } else {
+
                     const child = exp.data()[k - 1]
                     const wrapped = child.op === 'or' ? syntheticAnd(child) : child
 
                     const solved = (() => {
                         if (contradicts(wrapped, posPrefix, negPrefix)) return undefined
-                        else return unwrap(() => solveG(wrapped, structuredClone(posPrefix), structuredClone(negPrefix), 1, nesting + 1))
+                        else return solveG(wrapped, [...posPrefix], [...negPrefix], 1, nesting + 1)
                     })()
 
-                    if (solved) {
-                        if (solved.map) {
-                            let count = 0
-                            for (s of solved) {
-                                count++
-                                yield finish(s.result, s.pos, s.neg, s.count)
-                            }
-                            if (count === 0) {
-                                return finish(undefined)
-                             } else {
-                                finishall()
-                                return
-                            }
-                        } else {
-                            return finishall(solved.result, solved.pos, solved.neg, solved.count)
-                        }
+                    if (!solved) {
+                        finish(undefined)
+                        finishall()
+                        return
+                    }
 
-                    } else return finish(undefined)
+                    let count = 0
+                    for (let s of solved) {
+                        count++
+                        yield finish(s.result, [...s.pos], [...s.neg], s.count)
+                    }
+
+                    if (count === 0) {
+                        finish(undefined)
+                        finishall()
+                        return
+                    } else {
+                        finishall()
+                        return
+                    }
                 }
-                
             } 
         }
 
@@ -1639,20 +1665,32 @@ const formAst = () => {
 try{
     quickSolverTest(1)
     quickSolverTest(2)
+    console.log(solve(exp))
 
 } catch (e) {
+    console.error(e)
     console.log(globalCtx.memo)
 
-    throw e
+    //throw e
 }
+
 
 
 
 //THE BUG REPRODUCTION:
 {
 
+   
+
+    console.log("evaluated = " + evaluate(exp, numberToInput(2, 4)))
+
+
+
+ //throw " wait"
+
 console.log("BUG::::")
   const ctx = {}; globalCtx = ctx
+  globalCtx.bug = true
   const a = v(ctx), b = v(ctx), c = v(ctx)   // $1, $2, $3 — create leaves first
 
   const A = or(
@@ -1665,19 +1703,11 @@ console.log("BUG::::")
 
   console.log("brute 1=F,2=F,3=F:", evaluate(top, [false, false, false])) // true
   globalCtx.memo = {}
+  console.log(globalCtx.memo)
   console.log("solve:", show(solve(denot(top)))) // expect SAT, gets UNSAT
   console.log("::::BUG")
 }
 
-
-    console.log("evaluated = " + evaluate(exp, numberToInput(2, 4)))
-
-try{
-    console.log(solve(exp))
-
-} finally {
-    console.log(globalCtx.memo)
-}
 
    
 
