@@ -138,13 +138,29 @@
 
     const UNDEF = "__UNDEF__";
 
-    
-
-
     const memoKey = (exp, pos, neg, k) => {
         const id = exp.op ? exp.id : exp
         const pol = exp.op ? (exp.negative ? 'N' : 'P') : 'V'
         return id + pol + '|' + (exp.op ?? "v") + (exp.synthetic ? "synthetic" : "") + "|" + [...pos].filter(x => globalCtx.leafs.has(x)).sort((a,b)=>a-b).join(',') + '|' + [...neg].filter(x => globalCtx.leafs.has(x)).sort((a,b)=>a-b).join(',') + '|' + k
+    }
+
+    const recoverGenPrefix = (stored, posPrefix, negPrefix) => {
+        if (stored === UNDEF) return stored
+
+        return stored.values.map(v => {
+            const matchingPrefix = v.prefixes.find(p => 
+            p.posPrefix.every(x => posPrefix.includes(x)) && p.posPrefix.length === posPrefix.length && p.posPrefix.every(x => posPrefix.includes(x)) && p.negPrefix.length === negPrefix.length)
+        
+            if (!matchingPrefix) return v
+
+            return {
+                result: v.result,
+                pos: matchingPrefix.posout,
+                neg: matchingPrefix.negout,
+            }
+        })
+
+        
     }
 
     // at START of solve - return fast if hit
@@ -159,7 +175,8 @@
             const stored = globalCtx.memo[key];
             if (stored === UNDEF || stored.done) {
                 globalCtx.hits++
-                return { hit: true, value: stored === UNDEF ? undefined : stored };
+
+                return { hit: true, value: recoverGenPrefix(stored, posPrefix, negPrefix) === UNDEF ? undefined : stored };
             } else {
                 return { hit: false };
             }
@@ -175,17 +192,34 @@
         if (result === undefined) {
             globalCtx.memo[key] = UNDEF
         } else {
+            result.prefixes = [{posPrefix, negPrefix, posout: result.pos, negout: result.neg}]
+            result.pos = result.pos.filter(x => globalCtx.leafs.has(x))
+            result.neg = result.neg.filter(x => globalCtx.leafs.has(x))
+
             if (!globalCtx.memo[key]) {
                 globalCtx.memo[key] = { done: false, values: [ result ] }
             } else {
                 if (!globalCtx.memo[key].done) {
-                    globalCtx.memo[key] = { done: false, values: [...globalCtx.memo[key].values, result]}
-                }
-                
+                    const same = globalCtx.memo[key].values.find(x => (x.count ?? 0) === (result.count ?? 0))
+                    if (same) {
+                        same.prefixes = [...same.prefixes, ...result.prefixes]
+                    } else {
+                        globalCtx.memo[key] = { done: false, values: [...globalCtx.memo[key].values, result]}
+                    }
+                }   
             }
         }
         return result;
     };
+
+
+    const startMemoize = (exp, posPrefix, negPrefix, k) => {
+        if (!globalCtx.memo) globalCtx.memo = {}
+        const key = memoKey(exp, posPrefix, negPrefix, k);
+        if (globalCtx.memo[key]) {
+            globalCtx.memo[key].done = false
+        }
+    }
 
     const finishMemoize = (exp, posPrefix, negPrefix, k) => {
         if (!globalCtx.memo) globalCtx.memo = {}
@@ -489,9 +523,12 @@
                 
                 throw "too many contradictions, over " + limit + ", nesting = " + nesting + ", memo length = " + Object.keys(globalCtx.memo).length + " hits = " + globalCtx.hits
             }
+
+            
             
             const snapPos = [...posPrefix]
             const snapNeg = [...negPrefix]
+            
             const mm = memoized(exp, snapPos, snapNeg, k)
 
             if (mm.hit) {
@@ -505,8 +542,10 @@
                     return undefined
                 }
             }
+
+            startMemoize(exp, snapPos, snapNeg)
             
-            const finish = (r, pos, neg) => {
+            const finish = (r, pos, neg, count) => {
                 if (!r) {
                     memoize(exp, snapPos, snapNeg, k, undefined)
                     return undefined
@@ -515,16 +554,17 @@
                 replayResult(r, pos, neg)
                 const res = {
                     result: r,
-                    pos: pos,
-                    neg, neg
+                    pos,
+                    neg,
+                    count
                 }
                 memoize(exp, snapPos, snapNeg, k, res)
 
                 return res
             }
 
-            const finishall = (r, pos, neg) => {
-                const toReturn = finish(r, pos, neg)
+            const finishall = (r, pos, neg, count) => {
+                const toReturn = finish(r, pos, neg, count)
                 finishMemoize(exp, snapPos, snapNeg, k)
                 if (r !== undefined) {
                     return toReturn
@@ -539,14 +579,14 @@
             if (!exp.op) { 
                 if (negPrefix.some(x => x === exp)) return finish(undefined)
                 posPrefix.push(exp)
-                return finish(exp, posPrefix, negPrefix)
+                return finish(exp, posPrefix, negPrefix, 0)
             }
 
             if (exp.op === 'not') {
                 if (exp.exp().op) throw "needs denot!"
                 if (posPrefix.some(x => x === exp.exp())) return finish(undefined)
                 negPrefix.push(exp.exp())
-                return finish(exp, posPrefix, negPrefix)
+                return finish(exp, posPrefix, negPrefix, 0)
             }
 
  
@@ -641,8 +681,9 @@
                         for (res of result) {
                             count++
 
+                            const resexp = and(...[...extra, ...res.result])
                             //todo yield
-                            return finishall(and(...[...extra, ...res.result]), res.pos, res.neg) 
+                            return finishall(resexp, res.pos, res.neg, count) 
                         }
 
                         if(!incrementAtPosition(0)) {
@@ -660,7 +701,7 @@
 
             if (exp.op === 'or'){
                 if (k === undefined) {
-                    return finish(unwrap(() => solveG(syntheticAnd(exp), posPrefix, negPrefix, k, nesting + 1))?.result)
+                    return finish(unwrap(() => solveG(syntheticAnd(exp), posPrefix, negPrefix, k, nesting + 1))?.result, posPrefix, negPrefix, 0)
                 } else {
                     const child = exp.data()[k - 1]
                     const wrapped = child.op === 'or' ? syntheticAnd(child) : child
@@ -675,7 +716,7 @@
                             let count = 0
                             for (s of solved) {
                                 count++
-                                yield finish(s.result, s.pos, s.neg)
+                                yield finish(s.result, s.pos, s.neg, s.count)
                             }
                             if (count === 0) {
                                 return finish(undefined)
@@ -684,7 +725,7 @@
                                 return
                             }
                         } else {
-                            return finishall(solved.result, solved.pos, solved.neg)
+                            return finishall(solved.result, solved.pos, solved.neg, solved.count)
                         }
 
                     } else return finish(undefined)
@@ -1564,7 +1605,6 @@ const formAst = () => {
     console.log("solve sha...")
     
     const exp = denot(not(sha256DSL8(1, ctx3).hash[0]))
-
     //throw "later"
 
     function quickSolverTest(rounds) {
@@ -1635,10 +1675,8 @@ console.log("BUG::::")
 try{
     console.log(solve(exp))
 
-} catch (e) {
+} finally {
     console.log(globalCtx.memo)
-
-    throw e
 }
 
    
