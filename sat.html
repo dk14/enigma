@@ -503,7 +503,7 @@
         const solve = (exp) => {
             const res = unwrap(() => solveG(exp, [], [], undefined, 0))
             if (res?.next) {
-                return res.next().value
+                return res.next().value.result
             } else {
                 return res?.result
             }
