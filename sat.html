@@ -141,43 +141,59 @@
     
 
 
-const memoKey = (exp, pos, neg, k) => {
-  const id = exp.op ? exp.id : exp
-  const pol = exp.op ? (exp.negative ? 'N' : 'P') : 'V'
-  return id + pol + '|' + (exp.op ?? "v") + (exp.synthetic ? "synthetic" : "") + "|" + [...pos].filter(x => globalCtx.leafs.has(x)).sort((a,b)=>a-b).join(',') + '|' + [...neg].filter(x => globalCtx.leafs.has(x)).sort((a,b)=>a-b).join(',') + '|' + k
-}
-
-// at START of solve - return fast if hit
-// returns { hit: true, value } or { hit: false }
-const memoized = (exp, posPrefix, negPrefix, k) => {
-if (!globalCtx.memo) globalCtx.memo = {}
-if (!globalCtx.hits) globalCtx.hits = 0
-const key = memoKey(exp, posPrefix, negPrefix, k);
-  if (key in globalCtx.memo) {
-    const stored = globalCtx.memo[key];
-    globalCtx.hits++
-    return { hit: true, value: stored === UNDEF ? undefined : stored };
-  }
-  return { hit: false };
-};
-
-// BEFORE returning result in solve
-const memoize = (exp, posPrefix, negPrefix, k, result) => {
-  if (!globalCtx.memo) globalCtx.memo = {}
-  const key = memoKey(exp, posPrefix, negPrefix, k);
-  if (result === undefined) {
-    globalCtx.memo[key] = UNDEF
-  } else {
-    if (!globalCtx.memo[key]) {
-        globalCtx.memo[key] = [result]
-    } else {
-        globalCtx.memo[key] = [...globalCtx.memo[key], result]
+    const memoKey = (exp, pos, neg, k) => {
+        const id = exp.op ? exp.id : exp
+        const pol = exp.op ? (exp.negative ? 'N' : 'P') : 'V'
+        return id + pol + '|' + (exp.op ?? "v") + (exp.synthetic ? "synthetic" : "") + "|" + [...pos].filter(x => globalCtx.leafs.has(x)).sort((a,b)=>a-b).join(',') + '|' + [...neg].filter(x => globalCtx.leafs.has(x)).sort((a,b)=>a-b).join(',') + '|' + k
     }
 
-  }
-  
-  return result;
-};
+    // at START of solve - return fast if hit
+    // returns { hit: true, value } or { hit: false }
+    const memoized = (exp, posPrefix, negPrefix, k) => {
+        if (!globalCtx.memo) globalCtx.memo = {}
+        if (!globalCtx.hits) globalCtx.hits = 0
+
+        const key = memoKey(exp, posPrefix, negPrefix, k);
+
+        if (key in globalCtx.memo) {
+            const stored = globalCtx.memo[key];
+            if (stored === UNDEF || stored.done) {
+                globalCtx.hits++
+                return { hit: true, value: stored === UNDEF ? undefined : stored };
+            } else {
+                return { hit: false };
+            }
+            
+        }
+
+        return { hit: false };
+    };
+
+    const memoize = (exp, posPrefix, negPrefix, k, result) => {
+        if (!globalCtx.memo) globalCtx.memo = {}
+        const key = memoKey(exp, posPrefix, negPrefix, k);
+        if (result === undefined) {
+            globalCtx.memo[key] = UNDEF
+        } else {
+            if (!globalCtx.memo[key]) {
+                globalCtx.memo[key] = { done: false, values: [ result ] }
+            } else {
+                if (!globalCtx.memo[key].done) {
+                    globalCtx.memo[key] = { done: false, values: [...globalCtx.memo[key].values, result]}
+                }
+                
+            }
+        }
+        return result;
+    };
+
+    const finishMemoize = (exp, posPrefix, negPrefix, k) => {
+        if (!globalCtx.memo) globalCtx.memo = {}
+        const key = memoKey(exp, posPrefix, negPrefix, k);
+        if (globalCtx.memo[key]) {
+            globalCtx.memo[key].done = true
+        }
+    }
 
     const replayResult = (res, pos, neg) => {
         if (res === undefined) return
@@ -448,12 +464,11 @@ const memoize = (exp, posPrefix, negPrefix, k, result) => {
                 if (isGenVal(x)) addPos(tryOuterAndPositive, x) 
                 else if (isGenNotVal(x)) addNeg(tryOuterAndNegative, x)
             }
-
         }
 
         const solve = (exp) => {
             const res = unwrap(() => solveG(exp, [], [], undefined, 0))
-            if (res?.map) {
+            if (res?.next) {
                 return res.next().value
             } else {
                 return res?.result
@@ -482,14 +497,13 @@ const memoize = (exp, posPrefix, negPrefix, k, result) => {
             if (mm.hit) {
                 if (mm.value !== undefined) {
                     if (exp.op && exp.op !== 'not' && !posPrefix.includes(exp.id)) posPrefix.push(exp.id) //todo do we need this at all?
-                    for (let v of mm.value) {
+                    for (let v of mm.value.values) {
                         yield v
                     }
                     return
                 } else {
                     return undefined
                 }
-                
             }
             
             const finish = (r, pos, neg) => {
@@ -505,9 +519,17 @@ const memoize = (exp, posPrefix, negPrefix, k, result) => {
                     neg, neg
                 }
                 memoize(exp, snapPos, snapNeg, k, res)
-                
 
                 return res
+            }
+
+            const finishall = (r, pos, neg) => {
+                const toReturn = finish(r, pos, neg)
+                finishMemoize(exp, snapPos, snapNeg, k)
+                if (r !== undefined) {
+                    return toReturn
+                }
+                
             }
 
             const mergeInto = (from, to) => {
@@ -559,21 +581,18 @@ const memoize = (exp, posPrefix, negPrefix, k, result) => {
                         const nextGen = function* (acc) {
                             const res = unwrap(() => solveG(x, acc.pos, acc.neg, positions[i], nesting + 1))
                             if (res) {  
-                                
-                                //console.log(acc)
-                                const newacc = {
-                                    result: [...acc.result],
-                                    pos: [...acc.pos],
-                                    neg: [...acc.neg]
-                                }
+                            
                                 if (!res.next) {
+                                    const newacc = { result: [...acc.result], pos: [...acc.pos], neg: [...acc.neg] }
                                     
                                     newacc.result = dedupById([...acc.result, res.result], getid) //todo ensure flatten
                                     mergeInto(res.pos, newacc.pos)
                                     mergeInto(res.neg, newacc.neg)
                                     yield newacc
                                 } else {
+                                    
                                     for (r of res) {
+                                        const newacc = { result: [...acc.result], pos: [...acc.pos], neg: [...acc.neg] }
                                         newacc.result = dedupById([...acc.result, r.result], getid) //todo ensure flatten
                                         mergeInto(r.pos, newacc.pos)
                                         mergeInto(r.neg, newacc.neg)
@@ -621,17 +640,19 @@ const memoize = (exp, posPrefix, negPrefix, k, result) => {
 
                         for (res of result) {
                             count++
-                            mergeInto(res.pos, posPrefix)
-                            mergeInto(res.neg, negPrefix)
 
                             //todo yield
-                            return finish(and(...[...extra, ...res.result]), posPrefix, negPrefix) 
-                        }  
+                            return finishall(and(...[...extra, ...res.result]), res.pos, res.neg) 
+                        }
 
                         if(!incrementAtPosition(0)) {
-                            if(count === 0) return finish(undefined) ;
-                        } else return
-
+                            if(count === 0) {
+                                return finish(undefined)
+                            } else {
+                                finishall()
+                                return
+                            }
+                        } 
                     }
 
                 }      
@@ -654,15 +675,16 @@ const memoize = (exp, posPrefix, negPrefix, k, result) => {
                             let count = 0
                             for (s of solved) {
                                 count++
-                                mergeInto(s.pos, posPrefix)
-                                mergeInto(s.neg, negPrefix)
-                                yield finish(s.result, posPrefix, negPrefix)
+                                yield finish(s.result, s.pos, s.neg)
                             }
-                            if (count === 0) return finish(undefined)
+                            if (count === 0) {
+                                return finish(undefined)
+                             } else {
+                                finishall()
+                                return
+                            }
                         } else {
-                            mergeInto(solved.pos, posPrefix)
-                            mergeInto(solved.neg, negPrefix)
-                            return finish(solved.result, posPrefix, negPrefix)
+                            return finishall(solved.result, solved.pos, solved.neg)
                         }
 
                     } else return finish(undefined)
@@ -1540,7 +1562,9 @@ const formAst = () => {
         const ctx3 = {}
         
     console.log("solve sha...")
+    
     const exp = denot(not(sha256DSL8(1, ctx3).hash[0]))
+
     //throw "later"
 
     function quickSolverTest(rounds) {
@@ -1572,9 +1596,17 @@ const formAst = () => {
     console.log(`rounds=${rounds} solve(not(hash[0])) =`, sol === undefined ? "UNSAT" : show(sol))
   }
 }
+try{
+    quickSolverTest(1)
+    quickSolverTest(2)
 
-quickSolverTest(1)
-quickSolverTest(2)
+} catch (e) {
+    console.log(globalCtx.memo)
+
+    throw e
+}
+
+
 
 //THE BUG REPRODUCTION:
 {
@@ -1600,8 +1632,16 @@ console.log("BUG::::")
 
     console.log("evaluated = " + evaluate(exp, numberToInput(2, 4)))
 
-
+try{
     console.log(solve(exp))
+
+} catch (e) {
+    console.log(globalCtx.memo)
+
+    throw e
+}
+
+   
 
         //throw "err"
 
