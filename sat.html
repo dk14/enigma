@@ -298,11 +298,33 @@
         }
 
         //applicative functor
-        const flat = (g1, g2) => (function*() {
+        const flatMap = (g1, g2) => (function*() {
             for (const v of g1()) {
                 yield* g2(v);
             }
         })
+
+        const flat = function*(g, handler = () => {}) {
+            let outer = g.next()
+            let counter = 0
+            
+            while(!outer.done) {
+            let innerG = outer.value
+            let inner = innerG.next()
+
+            while(!inner.done) {
+                counter++
+
+                yield inner.value
+                inner = innerG.next()
+            }
+
+
+            outer = g.next()
+
+            }
+            if (counter === 0) handler()
+        }
 
         // function* empty(){}
         //function* something(){return 5; yield 6}
